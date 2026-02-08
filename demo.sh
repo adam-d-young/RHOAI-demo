@@ -679,10 +679,10 @@ wait
 pe "oc get inferenceservice -n granite-demo"
 
 echo ""
-echo "# 💡 While Granite loads, a look at where models live:"
-echo "#   • LLMs from the catalog → OCI ModelCar images (no S3 needed)"
-echo "#   • Custom trained models → S3 storage (MinIO, AWS S3, Ceph)"
-echo "#   • Two paths, one platform"
+echo "# 💡 While Granite loads, a look at model storage:"
+echo "#   • S3 (MinIO, AWS, Ceph) → fast iteration during development"
+echo "#   • OCI ModelCar images → immutable, versioned, production-ready"
+echo "#   • Any model can use either path -- catalog models just ship as ModelCar"
 
 wait
 }
