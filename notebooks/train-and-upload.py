@@ -28,9 +28,9 @@ model = tf.keras.Model(inputs=inputs, outputs=outputs)
 #     variables.data-00000-of-00001  -- weight values (can be GBs for large models)
 #     variables.index               -- index mapping variable names to data offsets
 #
-# Triton expects: {model_name}/{version}/saved_model.pb
-# So the S3 layout will be: production/demo-model/1/saved_model.pb
-export_path = os.path.join(LOCAL_TEMP_DIR, MODEL_VERSION)
+# Triton expects: {model_name}/{version}/model.savedmodel/saved_model.pb
+# So the S3 layout will be: production/demo-model/1/model.savedmodel/saved_model.pb
+export_path = os.path.join(LOCAL_TEMP_DIR, MODEL_VERSION, "model.savedmodel")
 model.export(export_path)
 print(f"Model exported locally to: {os.path.abspath(export_path)}")
 
@@ -41,7 +41,7 @@ print(f"Model exported locally to: {os.path.abspath(export_path)}")
 #   backend    -- "tensorflow" tells Triton to load it as a SavedModel
 #   input/output -- tensor names, types, and dimensions
 config_content = f"""name: "{MODEL_NAME}"
-backend: "tensorflow"
+platform: "tensorflow_savedmodel"
 input [{{ name: "keras_tensor", data_type: TYPE_FP32, dims: [5] }}]
 output [{{ name: "output_0", data_type: TYPE_FP32, dims: [1] }}]
 """
