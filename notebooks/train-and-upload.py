@@ -36,14 +36,12 @@ print(f"Model exported locally to: {os.path.abspath(export_path)}")
 
 # --- 4. Generate Triton config.pbtxt ---
 # Triton needs this file at the model root (next to the version folder)
-# to know which backend to use and the tensor shapes.
+# to know which backend to use.
 #   name       -- must match the model directory name
-#   backend    -- "tensorflow" tells Triton to load it as a SavedModel
-#   input/output -- tensor names, types, and dimensions
+#   platform   -- "tensorflow_savedmodel" tells Triton to use the TF SavedModel backend
+# Input/output shapes are auto-detected from the SavedModel itself.
 config_content = f"""name: "{MODEL_NAME}"
 platform: "tensorflow_savedmodel"
-input [{{ name: "keras_tensor", data_type: TYPE_FP32, dims: [5] }}]
-output [{{ name: "output_0", data_type: TYPE_FP32, dims: [1] }}]
 """
 config_path = os.path.join(LOCAL_TEMP_DIR, "config.pbtxt")
 with open(config_path, "w") as f:

@@ -654,16 +654,18 @@ echo "#   → Serving runtime:  'Triton Inference Server (GPU)'"
 echo "#   → Model framework:  tensorflow - 2"
 echo "#   → Model location:   Existing connection → minio-models"
 echo "#   → Path: production/demo-model"
+echo "#   → Advanced settings:"
+echo "#     • External route: UNCHECKED (internal access only)"
+echo "#     • Token auth: UNCHECKED"
 echo "#   → Click 'Deploy'"
 echo "#   → ⏳ Wait for status: ✅ green checkmark"
-echo "#   → Copy the inference URL"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
 wait
 
 echo ""
 echo "# ✅ Model deployment started -- wait for green checkmark"
-echo "#   Copy the inference URL when it appears"
+echo "#   No external route -- we'll test from inside the cluster"
 
 wait
 }
@@ -674,37 +676,27 @@ echo "#"
 echo "# 🎯 The payoff -- send data to the live model and get a prediction!"
 echo "#   • Our model: 5 floats in → 1 sigmoid probability out"
 echo "#   • Using Triton's v2 REST API"
-echo "#   • Format: POST /v2/models/{model}/infer"
+echo "#   • No external route -- we curl from inside the cluster"
+echo "#   • Same pattern the lab-instructions repo uses"
 
 wait
 
 echo ""
-echo "# 🔗 First, let's get the inference endpoint."
-echo "#   Copy this from the RHOAI Dashboard (Models tab → Inference endpoint)"
-echo "#   It looks like: https://demo-model-fsi-demo.apps.<cluster>/v2/models/demo-model/infer"
+echo "# 📡 Step 1: Check the model is loaded in Triton"
 
 wait
 
-read -p "  Paste inference URL (or press ENTER to auto-detect): " INFER_URL
-
-if [ -z "$INFER_URL" ]; then
-  # Auto-detect from the InferenceService
-  INFER_HOST=$(oc get inferenceservice -n fsi-demo -o jsonpath='{.items[0].status.url}' 2>/dev/null)
-  if [ -n "$INFER_HOST" ]; then
-    INFER_URL="${INFER_HOST}/v2/models/demo-model/infer"
-    echo -e "  ${GREEN}✅ Auto-detected: ${INFER_URL}${COLOR_RESET}"
-  else
-    echo -e "  ${RED}⚠️  Could not auto-detect. Please paste the URL manually.${COLOR_RESET}"
-    read -p "  Inference URL: " INFER_URL
-  fi
-fi
+pe "oc exec -n fsi-demo deployment/fsi-demo-model-predictor -- curl -s localhost:8080/v2/models/demo-model | python3 -m json.tool"
 
 echo ""
-echo "# 📡 Step 1: Check model health"
+echo "# 🔍 Detect the input tensor name"
+echo "#   TF/Keras appends a suffix each export (keras_tensor, keras_tensor_9, etc.)"
+echo "#   We read it from the model metadata so the request always matches"
 
 wait
 
-pe "curl -sk ${INFER_URL%/infer} | python3 -m json.tool"
+INPUT_NAME=$(oc exec -n fsi-demo deployment/fsi-demo-model-predictor -- curl -s localhost:8080/v2/models/demo-model 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['inputs'][0]['name'])" 2>/dev/null)
+echo -e "  ${GREEN}✅ Input tensor: ${INPUT_NAME}${COLOR_RESET}"
 
 echo ""
 echo "# 📡 Step 2: Send a prediction request"
@@ -713,11 +705,11 @@ echo "#   Output: 1 sigmoid value (0-1 probability)"
 
 wait
 
-pe "curl -sk $INFER_URL \\
+pe "oc exec -n fsi-demo deployment/fsi-demo-model-predictor -- curl -s localhost:8080/v2/models/demo-model/infer \\
   -H 'Content-Type: application/json' \\
   -d '{
     \"inputs\": [{
-      \"name\": \"keras_tensor\",
+      \"name\": \"${INPUT_NAME}\",
       \"shape\": [1, 5],
       \"datatype\": \"FP32\",
       \"data\": [0.1, 0.5, 0.3, 0.7, 0.2]
@@ -730,11 +722,11 @@ echo "#   Changing the feature values changes the prediction"
 
 wait
 
-pe "curl -sk $INFER_URL \\
+pe "oc exec -n fsi-demo deployment/fsi-demo-model-predictor -- curl -s localhost:8080/v2/models/demo-model/infer \\
   -H 'Content-Type: application/json' \\
   -d '{
     \"inputs\": [{
-      \"name\": \"keras_tensor\",
+      \"name\": \"${INPUT_NAME}\",
       \"shape\": [1, 5],
       \"datatype\": \"FP32\",
       \"data\": [0.9, 0.1, 0.8, 0.2, 0.95]
@@ -743,7 +735,7 @@ pe "curl -sk $INFER_URL \\
 
 echo ""
 echo "# 💡 What just happened:"
-echo "#   • curl sent JSON over HTTPS to the Triton server"
+echo "#   • curl ran inside the Triton pod (oc exec)"
 echo "#   • Triton loaded the SavedModel from S3 (MinIO)"
 echo "#   • GPU ran the forward pass through our neural network"
 echo "#   • Result: a probability between 0 and 1"
@@ -752,6 +744,9 @@ echo "# 🔑 In production this would be:"
 echo "#   • Fraud detection scores on transactions"
 echo "#   • Credit risk assessments"
 echo "#   • Real-time pricing models"
+echo "#"
+echo "# 🌐 For external access, create a Gateway + HTTPRoute"
+echo "#   to expose the endpoint outside the cluster"
 
 wait
 
