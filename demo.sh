@@ -272,6 +272,8 @@ begin_section 4 "📦" "Install Red Hat OpenShift AI" || return 0
 echo "#"
 echo "# 🧠 RHOAI = the ML platform layer on top of OpenShift"
 echo "#   • Workbenches, model serving, pipelines, model registry"
+echo "#   • Model Catalog with pre-validated foundation models"
+echo "#   • LlamaStack for GenAI inference and chat"
 echo "#   • Install the operator from OperatorHub in the console"
 
 wait
@@ -325,7 +327,16 @@ wait
 pe "oc get datasciencecluster -o yaml | grep -A1 managementState"
 
 echo ""
-echo "# ✅ RHOAI 3.0 is ready -- all components healthy"
+echo "# 🔧 Enable LlamaStack operator for GenAI capabilities"
+echo "#   • LlamaStack provides a unified API for LLM inference"
+echo "#   • We'll use it later for the Granite chat playground"
+
+wait
+
+pe "oc patch datasciencecluster default-dsc --type merge -p '{\"spec\":{\"components\":{\"llamastackoperator\":{\"managementState\":\"Managed\"}}}}'"
+
+echo ""
+echo "# ✅ RHOAI 3.0 is ready -- all components healthy, LlamaStack enabled"
 
 wait
 }
@@ -411,83 +422,105 @@ wait
 }
 
 section_6() {
-begin_section 6 "🏗️ " "Pre-deployed Infrastructure" || return 0
+begin_section 6 "🌟" "Model Catalog — Deploy Granite LLM" || return 0
+# Depends on: RHOAI installed (Section 4), HardwareProfile (Section 5)
+ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+verify_step "HardwareProfile exists" "oc get hardwareprofile nvidia-gpu -n redhat-ods-applications 2>/dev/null"
 echo "#"
-echo "# 🧱 Two backing services (deployed during setup):"
+echo "# 🌟 RHOAI includes a Model Catalog of pre-validated models"
+echo "#   • Red Hat AI Validated: tested, supported, enterprise-ready"
+echo "#   • Delivered as OCI ModelCar container images"
+echo "#   • One-click deploy from the Dashboard"
 echo "#"
-echo "#   📦 MinIO → S3-compatible object storage"
-echo "#     • Model files, pipeline artifacts"
-echo "#     • Production = AWS S3 / Ceph / ODF"
+echo "# 📦 ModelCar = model weights packaged as a container image"
+echo "#   • Pulled by the container runtime just like app images"
+echo "#   • Version-tagged, registry-hosted, no S3 needed"
+echo "#   • Same pull/cache/distribute pipeline as any container"
 echo "#"
-echo "#   🗄️  MySQL → Model Registry metadata"
-echo "#     • Name, version, artifact paths"
-echo "#     • NOT the models -- just the catalog"
+echo "# 🎯 We'll deploy Granite 3.1 8B Instruct (W4A16 quantized)"
+echo "#   • IBM's enterprise LLM -- instruction-tuned for chat"
+echo "#   • W4A16 = 4-bit weights, 16-bit activations"
+echo "#   • Fits easily on our A10G (24GB VRAM)"
+echo "#   • Served via vLLM -- high-performance LLM inference engine"
 
 wait
 
-echo ""
-echo "# 🔄 Verify they're running:"
-
-wait
-
-pe "oc get pods -l app=minio"
-
-pe "oc get pods -n rhoai-model-registry"
-
-echo ""
-verify_step "MinIO pod is Running" "oc get pods -l app=minio -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
-verify_step "Model Registry DB pod is Running" "oc get pods -n rhoai-model-registry -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
-
-echo ""
-echo "# 🪣 Time to create our model storage bucket in MinIO!"
-echo "#   → This is where trained models land before serving"
-
-wait
-
-verify_step "MinIO UI route exists" "oc get route minio-ui 2>/dev/null"
-
-pe "MINIO_URL=\$(oc get route minio-ui -o jsonpath='https://{.spec.host}') && echo \$MINIO_URL"
-
-pe "$BROWSER_OPEN \$MINIO_URL"
+pe "$BROWSER_OPEN \$RHOAI_URL"
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-echo -e "# ${RED}   ACTION REQUIRED -- Create 'models' bucket in MinIO${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Deploy Granite from Model Catalog${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 🌐 MinIO Console:"
-echo "#   → Login:  Username: minio  |  Password: minio123"
-echo "#   → Sidebar → 'Object Browser'"
-echo "#   → Click 'Create a Bucket'"
-echo "#   → Bucket name: models"
-echo "#   → Click 'Create Bucket'"
-echo "#   → Leave it empty -- notebook will upload here later"
+echo "# 🌐 RHOAI Dashboard → Model Catalog (left sidebar)"
+echo "#   → Browse the catalog -- show the audience what's available"
+echo "#   → Find: Granite 3.1 8B Instruct (quantized W4A16)"
+echo "#   → Click the model card → review description, license"
+echo "#   → Click 'Deploy'"
+echo "#"
+echo "# 📝 Deployment settings:"
+echo "#   → Model name:       granite-llm"
+echo "#   → Project:           Create new → granite-demo"
+echo "#   → Serving runtime:   vLLM ServingRuntime for KServe"
+echo "#   → Hardware profile:  nvidia-gpu (NVIDIA GPU A10G)"
+echo "#   → Model location:    should be pre-filled from catalog"
+echo "#     oci://registry.redhat.io/rhelai1/modelcar-granite-3-1-8b-instruct-quantized-w4a16:1.5"
+echo "#   → Advanced settings:"
+echo "#     • External route: UNCHECKED (internal only)"
+echo "#     • Token auth: UNCHECKED"
+echo "#   → Click 'Deploy'"
+echo "#"
+echo "# ⏳ The model image will start pulling. This takes a few minutes"
+echo "#   if not pre-warmed. We'll fill the time in the next section!"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo "# 🔄 Verify the deployment started:"
+
+wait
+
+pe "oc get inferenceservice -n granite-demo"
+
+echo ""
+echo "# ⏳ Model is pulling/loading. Let's talk about serving runtimes"
+echo "#   and backing services while we wait..."
 
 wait
 }
 
 section_7() {
-begin_section 7 "🧠" "GPU Serving Runtime" || return 0
+begin_section 7 "🔧" "Serving Runtimes & Backing Services" || return 0
 # Depends on: RHOAI installed (Section 4)
 verify_step "RHOAI operator is installed" "oc get csv -A 2>/dev/null | grep rhods | grep -q Succeeded"
+ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
 echo "#"
-echo "# 🖥️  ServingRuntime = how models get served on GPUs"
-echo "#   • Using NVIDIA Triton Inference Server (v24.01)"
-echo "#   • Supports TensorFlow, Keras, ONNX out of the box"
-echo "#   • Tells KServe: container image, ports, supported formats"
+echo "# 🖥️  Serving Runtimes = how models run on GPUs"
+echo "#   • RHOAI supports multiple runtimes for different use cases"
+echo "#   • vLLM: high-performance LLM inference (what Granite uses)"
+echo "#   • Triton: multi-framework ML inference (TF, ONNX, PyTorch)"
+echo "#   • Each runtime is an OpenShift Template in redhat-ods-applications"
 echo "#"
 echo "# 📦 RHOAI 3.0 stores runtimes as OpenShift Templates"
 echo "#   • Dashboard discovers them in redhat-ods-applications"
 echo "#   • Template wraps a bare ServingRuntime + metadata:"
 echo "#     - API protocol (REST vs gRPC)"
 echo "#     - Model type (predictive vs generative AI)"
-echo "#   • GUI does this wrapping for you when you paste YAML"
 
 wait
 
 echo ""
-echo "# 📋 Here's the ServingRuntime definition:"
+echo "# 🔧 vLLM is already available (built into RHOAI 3.0)"
+echo "#   We used it to deploy Granite in the previous section."
+echo "#"
+echo "# 📋 Now let's add Triton for custom ML models (TensorFlow, etc.)"
+echo "#   We'll use this later when we deploy our own trained model."
+
+wait
+
+echo ""
+echo "# 📋 Here's the Triton ServingRuntime definition:"
 
 wait
 
@@ -531,28 +564,193 @@ echo ""
 verify_step "ServingRuntime template exists" "oc get template triton-kserve-gpu-template -n redhat-ods-applications 2>/dev/null"
 
 echo ""
-echo "# ✅ 'Triton Inference Server (GPU)' now available in RHOAI Dashboard!"
+echo "# ✅ Two serving runtimes available:"
+echo "#   • vLLM → LLMs (Granite, Llama, Mistral)"
+echo "#   • Triton → custom ML (TensorFlow, ONNX, PyTorch)"
+
+wait
+
+echo ""
+echo "# 🧱 Now let's check the backing services (deployed during setup):"
+echo "#"
+echo "#   📦 MinIO → S3-compatible object storage"
+echo "#     • Model files, pipeline artifacts"
+echo "#     • Production = AWS S3 / Ceph / ODF"
+echo "#"
+echo "#   🗄️  MySQL → Model Registry metadata"
+echo "#     • Name, version, artifact paths"
+echo "#     • NOT the models -- just the catalog"
+
+wait
+
+echo ""
+echo "# 🔄 Verify they're running:"
+
+wait
+
+pe "oc get pods -l app=minio"
+
+pe "oc get pods -n rhoai-model-registry"
+
+echo ""
+verify_step "MinIO pod is Running" "oc get pods -l app=minio -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+verify_step "Model Registry DB pod is Running" "oc get pods -n rhoai-model-registry -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+
+echo ""
+echo "# 🪣 Time to create our model storage bucket in MinIO!"
+echo "#   → This is where our custom trained models will land"
+
+wait
+
+verify_step "MinIO UI route exists" "oc get route minio-ui 2>/dev/null"
+
+pe "MINIO_URL=\$(oc get route minio-ui -o jsonpath='https://{.spec.host}') && echo \$MINIO_URL"
+
+pe "$BROWSER_OPEN \$MINIO_URL"
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Create 'models' bucket in MinIO${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 MinIO Console:"
+echo "#   → Login:  Username: minio  |  Password: minio123"
+echo "#   → Sidebar → 'Object Browser'"
+echo "#   → Click 'Create a Bucket'"
+echo "#   → Bucket name: models"
+echo "#   → Click 'Create Bucket'"
+echo "#   → Leave it empty -- notebook will upload here later"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo "# 🔄 Let's check on the Granite deployment while we're here:"
+
+wait
+
+pe "oc get inferenceservice -n granite-demo"
+
+echo ""
+echo "# 💡 While Granite loads, a look at where models live:"
+echo "#   • LLMs from the catalog → OCI ModelCar images (no S3 needed)"
+echo "#   • Custom trained models → S3 storage (MinIO, AWS S3, Ceph)"
+echo "#   • Two paths, one platform"
 
 wait
 }
 
 section_8() {
-begin_section 8 "🧪" "Workbench & Train Model" || return 0
-# Depends on: RHOAI_URL (Section 4), MINIO_URL (Section 6),
+begin_section 8 "💬" "LlamaStack + Chat with Granite" || return 0
+# Depends on: RHOAI installed with LlamaStack (Section 4), Granite deployed (Section 6)
+ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+echo "#"
+echo "# 💬 LlamaStack = unified API for LLM inference"
+echo "#   • Open-source project by Meta, supported by Red Hat"
+echo "#   • Provides a standard API for chat, completions, embeddings"
+echo "#   • Includes a web-based Playground for interactive chat"
+echo "#   • We enabled the LlamaStack operator back in Section 4"
+
+wait
+
+echo ""
+echo "# 🔄 First, let's make sure Granite is ready:"
+
+wait
+
+pe "oc get inferenceservice -n granite-demo"
+
+verify_step "Granite InferenceService is Ready" "oc get inferenceservice -n granite-demo -o jsonpath='{.items[0].status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True"
+
+echo ""
+echo "# 🎯 Granite is serving! Let's set up the chat playground."
+
+wait
+
+# Get the Granite internal endpoint
+GRANITE_ISVC=$(oc get inferenceservice -n granite-demo -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+GRANITE_ENDPOINT="http://${GRANITE_ISVC}-predictor.granite-demo.svc.cluster.local:8080/v1"
+echo ""
+echo "# 🔗 Granite internal endpoint:"
+echo "#   ${GRANITE_ENDPOINT}"
+
+wait
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Deploy LlamaStack + Playground${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 📋 Deploy LlamaStack Operator Instance:"
+echo "#   → OpenShift Console → Operators → Installed Operators"
+echo "#   → Find 'LlamaStack' → 'LlamaStack API' tab"
+echo "#   → Click 'Create LlamaStackAPI'"
+echo "#   → Name: granite-llamastack"
+echo "#   → Namespace: granite-demo"
+echo "#   → Model endpoint: ${GRANITE_ENDPOINT}"
+echo "#   → Click 'Create'"
+echo "#"
+echo "# 📋 Deploy LlamaStack Playground:"
+echo "#   → The playground provides a chat UI"
+echo "#   → Can be deployed via Helm chart or manifest"
+echo "#   → Points to the LlamaStack API service"
+echo "#"
+echo "# 💡 Alternative: Use the OpenShift Console Helm chart releases"
+echo "#   → Developer perspective → Helm → Create → llama-stack-playground"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Chat with Granite!${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 Open the Playground route in your browser"
+echo "#   → Select the Granite model"
+echo "#   → Try these FSI-relevant prompts:"
+echo "#"
+echo "#   💬 'Explain the key components of Basel III capital requirements'"
+echo "#   💬 'What are the main risks in algorithmic trading?'"
+echo "#   💬 'Summarize PCI-DSS compliance requirements for payment processing'"
+echo "#   💬 'What is model risk management and why does it matter in banking?'"
+echo "#"
+echo "# 🔑 Key points for the audience:"
+echo "#   • This model is running on our A10G GPU, on OpenShift"
+echo "#   • Enterprise-grade: Red Hat validated, IBM-developed"
+echo "#   • No data leaves the cluster -- internal inference only"
+echo "#   • From catalog browse to live chat in minutes"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo "# ✅ Foundation model deployed from catalog and serving live!"
+echo "#   Next: build and deploy your OWN custom model"
+
+wait
+}
+
+section_9() {
+begin_section 9 "🧪" "Workbench & Train Custom Model" || return 0
+# Depends on: RHOAI_URL (Section 4), MINIO_URL (Section 7),
 #             HardwareProfile (Section 5), ServingRuntime (Section 7)
 ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
 ensure_var MINIO_URL "oc get route minio-ui -o jsonpath='https://{.spec.host}'"
 verify_step "HardwareProfile exists" "oc get hardwareprofile nvidia-gpu -n redhat-ods-applications 2>/dev/null"
 verify_step "ServingRuntime template exists" "oc get template triton-kserve-gpu-template -n redhat-ods-applications 2>/dev/null"
 echo "#"
+echo "# 🔀 Shift: from foundation models → building your own"
+echo "#   • Granite gave us GenAI out of the box"
+echo "#   • But FSI needs custom models too:"
+echo "#     fraud detection, credit scoring, risk pricing"
+echo "#   • Same platform, same GPUs, different workflow"
+echo "#"
 echo "# 🎯 Interactive ML workflow:"
 echo "#   1️⃣  Create Data Science Project"
 echo "#   2️⃣  Connect S3 storage"
 echo "#   3️⃣  Launch GPU workbench"
 echo "#   4️⃣  Train model + upload to MinIO"
-echo "#"
-echo "# 📋 After training, we'll register the model in the Model Registry"
-echo "#   before deploying -- the production MLOps way"
 
 wait
 
@@ -658,9 +856,9 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 wait
 }
 
-section_9() {
-begin_section 9 "📋" "Model Registry" || return 0
-# Depends on: RHOAI installed (Section 4), Model trained (Section 8),
+section_10() {
+begin_section 10 "📋" "Model Registry" || return 0
+# Depends on: RHOAI installed (Section 4), Model trained (Section 9),
 #             MySQL DB deployed (setup.sh Step 8)
 ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
 verify_step "RHOAI operator is installed" "oc get csv -A 2>/dev/null | grep rhods | grep -q Succeeded"
@@ -785,9 +983,9 @@ echo "#   Next: deploy it directly from the registry"
 wait
 }
 
-section_10() {
-begin_section 10 "🚀" "Deploy from Model Registry" || return 0
-# Depends on: Model registered (Section 9), ServingRuntime (Section 7)
+section_11() {
+begin_section 11 "🚀" "Deploy from Registry & Test Inference" || return 0
+# Depends on: Model registered (Section 10), ServingRuntime (Section 7)
 ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
 verify_step "ServingRuntime template exists" "oc get template triton-kserve-gpu-template -n redhat-ods-applications 2>/dev/null"
 echo "#"
@@ -848,19 +1046,11 @@ wait
 
 echo ""
 echo "# ✅ Model deployed from registry with full lineage tracking"
+echo "#   Now let's send some predictions!"
 
 wait
-}
 
-section_11() {
-begin_section 11 "🔮" "Test Inference" || return 0
-# Depends on: Model deployed (Section 10)
-verify_step "InferenceService is Ready" "oc get inferenceservice -n fsi-demo -o jsonpath='{.items[0].status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True"
-
-# Get the InferenceService name to display in instructions
-ISVC_NAME=$(oc get inferenceservice -n fsi-demo -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
-
-echo "#"
+echo ""
 echo "# 🎯 The payoff -- send data to the live model and get a prediction!"
 echo "#   • Our model: 5 floats in → 1 sigmoid probability out"
 echo "#   • Using Triton's v2 REST API from inside the cluster"
@@ -873,7 +1063,7 @@ echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━�
 echo -e "# ${RED}   ACTION REQUIRED -- Run inference notebook${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 🌐 In JupyterLab (same workbench from Section 8):"
+echo "# 🌐 In JupyterLab (same workbench from Section 9):"
 echo "#   → Navigate to RHOAI-demo/notebooks/"
 echo "#   → Open: 📓 inference-test.ipynb"
 echo "#"
@@ -896,16 +1086,15 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 wait
 
 echo ""
-echo "# ✅ Full lifecycle complete:"
-echo "#   GPU setup → RHOAI install → train on GPU → register"
-echo "#   → deploy from registry → live inference"
+echo "# ✅ Full custom model lifecycle complete:"
+echo "#   Train on GPU → register → deploy from registry → live inference"
 
 wait
 }
 
 section_12() {
 begin_section 12 "⚙️ " "Data Science Pipelines & Experiments" || return 0
-# Depends on: RHOAI installed (Section 4), fsi-demo namespace (Section 8)
+# Depends on: RHOAI installed (Section 4), fsi-demo namespace (Section 9)
 ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
 verify_step "fsi-demo namespace exists" "oc get namespace fsi-demo 2>/dev/null"
 echo "#"
@@ -922,14 +1111,14 @@ echo "#   3️⃣  Train Model       → fit on GPU, output SavedModel"
 echo "#   4️⃣  Validate          → score against holdout set"
 echo "#   5️⃣  Upload Model      → push artifacts to S3"
 echo "#"
-echo "# 💡 We did Sections 8-11 manually so you could see each step."
+echo "# 💡 We did Sections 9-11 manually so you could see each step."
 echo "#   In production, the training workflow is a pipeline."
 echo "#   Deployment stays separate (Model Registry → Deploy)."
 
 wait
 
 echo ""
-echo "# 🔧 Pipeline server was deployed back in Section 8."
+echo "# 🔧 Pipeline server was deployed back in Section 9."
 echo "#   Let's verify it's ready:"
 
 wait
@@ -962,7 +1151,7 @@ echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━�
 echo -e "# ${RED}   ACTION REQUIRED -- Compile pipeline in workbench${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 🌐 In JupyterLab terminal (same workbench from Section 8):"
+echo "# 🌐 In JupyterLab terminal (same workbench from Section 9):"
 echo "#   → Make sure you're in the RHOAI-demo/notebooks/ directory"
 echo "#   → Run:"
 echo "#"
@@ -1085,7 +1274,7 @@ wait
 
 echo ""
 echo "# ✅ Pipeline deployed, run complete, experiment tracked"
-echo "#   Manual workflow (Sections 8-11) is now automated"
+echo "#   Manual workflow (Sections 9-11) is now automated"
 
 wait
 }
@@ -1097,17 +1286,27 @@ echo "#"
 echo -e "#   ${GREEN}Demo complete!${COLOR_RESET}"
 echo "#"
 echo "#   What we covered:"
-echo "#   • GPU infrastructure (NFD + NVIDIA Operator)"
-echo "#   • Red Hat OpenShift AI installation"
-echo "#   • Hardware Profiles with GPU tolerations"
-echo "#   • Workbenches and GPU-accelerated training"
-echo "#   • Model Registry with FSI metadata"
-echo "#   • Model deployment from registry"
-echo "#   • Live inference on A10G GPU"
-echo "#   • Data Science Pipelines (automation)"
 echo "#"
-echo -e "#   Bare metal GPUs → trained model → registered → deployed → inference"
-echo -e "#   All on ${CYAN}Red Hat OpenShift AI${COLOR_RESET} 🚀"
+echo "#   🔧 GPU Infrastructure"
+echo "#   • NFD + NVIDIA GPU Operator on OpenShift"
+echo "#   • Hardware Profiles with GPU tolerations"
+echo "#"
+echo "#   🌟 Foundation Models (GenAI)"
+echo "#   • Model Catalog with pre-validated models"
+echo "#   • One-click Granite LLM deployment via vLLM"
+echo "#   • LlamaStack chat playground"
+echo "#"
+echo "#   🧪 Custom ML Models"
+echo "#   • GPU-accelerated training workbenches"
+echo "#   • Model Registry with FSI governance metadata"
+echo "#   • Deploy from registry with full lineage"
+echo "#   • Live inference on A10G GPU"
+echo "#"
+echo "#   ⚙️  Automation"
+echo "#   • Data Science Pipelines (KFP v2 + Elyra)"
+echo "#   • Experiment tracking and reproducibility"
+echo "#"
+echo -e "#   All on ${CYAN}Red Hat OpenShift AI 3.0${COLOR_RESET} 🚀"
 echo "#"
 echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
 }

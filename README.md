@@ -1,6 +1,6 @@
 # RHOAI Demo - Get Started with OpenShift AI
 
-Instructor-led demo for FSI Bootcamp Day 1. Covers GPU infrastructure, Red Hat OpenShift AI installation, model training, model registry, model serving, and data science pipelines.
+Instructor-led demo for FSI Bootcamp Day 1. Covers GPU infrastructure, Red Hat OpenShift AI installation, Model Catalog with Granite LLM, LlamaStack chat, model training, model registry, model serving, and data science pipelines.
 
 ## Prerequisites
 
@@ -82,27 +82,29 @@ Each section can be skipped individually. Dependency checks warn if a previous s
 
 ## Demo Sections
 
-| # | Section | Method |
-|---|---------|--------|
-| 1 | Check Current State (NFD, GPU, taints) | CLI |
-| 2 | Node Feature Discovery | CLI |
-| 3 | NVIDIA GPU Operator (ClusterPolicy, nvidia-smi) | CLI |
-| 4 | Install RHOAI (OperatorHub, DataScienceCluster) | CLI + Browser |
-| 5 | Hardware Profile (GPU toleration) | CLI or Browser |
-| 6 | Pre-deployed Infrastructure (MinIO, MySQL) | CLI + Browser |
-| 7 | GPU Serving Runtime (Triton) | CLI or Browser |
-| 8 | Workbench & Train Model | Browser (JupyterLab) |
-| 9 | Model Registry | CLI + Browser |
-| 10 | Deploy from Model Registry | Browser |
-| 11 | Test Inference | Browser (Jupyter notebook) |
-| 12 | Data Science Pipelines & Experiments | CLI + Browser |
-| 13 | Closing | CLI |
+| # | Section | Story Beat | Method |
+|---|---------|-----------|--------|
+| 1 | Check Current State (NFD, GPU, taints) | "The GPU foundation" | CLI |
+| 2 | Node Feature Discovery | | CLI |
+| 3 | NVIDIA GPU Operator (ClusterPolicy, nvidia-smi) | | CLI |
+| 4 | Install RHOAI (+ enable LlamaStack) | "The AI platform" | CLI + Browser |
+| 5 | Hardware Profile (GPU toleration) | | CLI or Browser |
+| 6 | Model Catalog — Deploy Granite LLM | "Foundation models, one click" | Browser |
+| 7 | Serving Runtimes & Backing Services | "How models get served" | CLI + Browser |
+| 8 | LlamaStack + Chat with Granite | "The wow moment" | Browser |
+| 9 | Workbench & Train Custom Model | "Build your own model" | CLI + Browser |
+| 10 | Model Registry | "Governance & lineage" | CLI + Browser |
+| 11 | Deploy from Registry & Test Inference | "From registry to production" | Browser |
+| 12 | Data Science Pipelines & Experiments | "Automate the lifecycle" | CLI + Browser |
+| 13 | Closing | | CLI |
 
 ## Key Design Decisions
 
+- **Value-first storytelling**: GenAI wow moment (Granite chat) comes before custom ML deep dive. Business stakeholders see value immediately.
 - **RHOAI 3.0**: Uses Gateway API (not Routes) for Dashboard URL. Uses KServe (not ModelMesh).
 - **Internal inference only**: No external routes for model endpoints. Inference runs from inside the cluster (workbench notebook).
-- **Triton Inference Server**: Serves TensorFlow SavedModel on GPU with auto-detected tensor names.
+- **Triton for custom ML, vLLM for LLMs**: Two serving runtimes for two use cases.
 - **Model Registry workflow**: Train -> register in registry with metadata -> deploy from registry. Full lineage tracking.
 - **MinIO for S3**: Stands in for production S3/Ceph/ODF. Bucket creation is done live during the demo.
 - **Pipelines**: KFP v2 SDK compiles to IR YAML (Intermediate Representation). RHOAI 3.0 uses Argo Workflows backend. The pipeline is intentionally 4 steps; the validate step is added live using Elyra to show both code-first and visual pipeline building.
+- **Pre-warming**: Optional setup.sh step caches serving runtime images on GPU nodes for faster demo deployments.
