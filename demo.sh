@@ -537,7 +537,7 @@ wait
 }
 
 section_8() {
-begin_section 8 "🧪" "Workbench & End-to-End ML Workflow" || return 0
+begin_section 8 "🧪" "Workbench & Train Model" || return 0
 # Depends on: RHOAI_URL (Section 4), MINIO_URL (Section 6),
 #             HardwareProfile (Section 5), ServingRuntime (Section 7)
 ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
@@ -545,12 +545,14 @@ ensure_var MINIO_URL "oc get route minio-ui -o jsonpath='https://{.spec.host}'"
 verify_step "HardwareProfile exists" "oc get hardwareprofile nvidia-gpu -n redhat-ods-applications 2>/dev/null"
 verify_step "ServingRuntime template exists" "oc get template triton-kserve-gpu-template -n redhat-ods-applications 2>/dev/null"
 echo "#"
-echo "# 🎯 The fun part! Full ML lifecycle:"
+echo "# 🎯 Interactive ML workflow:"
 echo "#   1️⃣  Create Data Science Project"
 echo "#   2️⃣  Connect S3 storage"
 echo "#   3️⃣  Launch GPU workbench"
-echo "#   4️⃣  Train + upload model"
-echo "#   5️⃣  Deploy for inference"
+echo "#   4️⃣  Train model + upload to MinIO"
+echo "#"
+echo "# 📋 After training, we'll register the model in the Model Registry"
+echo "#   before deploying -- the production MLOps way"
 
 wait
 
@@ -634,9 +636,71 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 echo "#"
 echo "# 5️⃣  🌐 MinIO Console:"
 echo "#   → Object Browser → 'models' bucket"
-echo "#   → Model artifact should be here"
-echo "#   → Note the path (e.g. 'model/') -- needed for deploy step"
+echo "#   → You should see: production/demo-model/"
+echo "#     → config.pbtxt"
+echo "#     → 1/model.savedmodel/saved_model.pb"
+echo "#     → 1/model.savedmodel/fingerprint.pb"
+echo "#     → 1/model.savedmodel/variables/"
+echo "#"
+echo "# ✅ Model trained on GPU, exported, and stored in S3"
+echo "#   Next: register it in the Model Registry before deploying"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+}
+
+section_9() {
+begin_section 9 "📋" "Model Registry" || return 0
+# Depends on: RHOAI installed (Section 4), Model trained (Section 8),
+#             MySQL DB deployed (setup.sh Step 8)
+ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+verify_step "RHOAI operator is installed" "oc get csv -A 2>/dev/null | grep rhods | grep -q Succeeded"
+verify_step "Model Registry DB is running" "oc get pods -n rhoai-model-registry -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+echo "#"
+echo "# 🗂️  Model Registry = the catalog for YOUR models"
+echo "#   • NOT the Model Catalog (pre-built Red Hat AI models)"
+echo "#   • Tracks: name, version, description, artifact URI"
+echo "#   • Add custom properties: team, regulatory, risk tier"
+echo "#   • Deploy directly from the registry"
+echo "#   • Full audit trail: who trained it, when, what data"
+echo "#"
+echo "# 📋 In production (FSI), this is critical:"
+echo "#   • Model Risk Management (SR 11-7 / SS1/23)"
+echo "#   • Version control for model governance"
+echo "#   • Deployment tracking across environments"
+
+wait
+
+echo ""
+echo "# 🔧 First, create the Model Registry instance"
+echo "#   • The RHOAI operator installs the registry capability"
+echo "#   • But we still need to create an actual registry instance"
+echo "#   • It connects to our MySQL backend (deployed in setup)"
+
+wait
+
+echo ""
+echo "# 📋 Here's the registry instance manifest:"
+
+wait
+
+pe "bat --style=grid,numbers manifests/model-registry-instance.yaml"
+
+wait
+
+pe "oc apply -f manifests/model-registry-instance.yaml"
+
+echo ""
+echo "# ⏳ Waiting for registry to become available..."
+
+wait
+
+pe "oc wait --for=condition=Available mr/fsi-model-registry -n rhoai-model-registries --timeout=120s"
+
+verify_step "Model Registry instance is Available" "oc get mr fsi-model-registry -n rhoai-model-registries -o jsonpath='{.status.conditions[?(@.type==\"Available\")].status}' 2>/dev/null | grep -q True"
+
+echo ""
+echo "# ✅ Registry is live! Now register our trained model"
 
 wait
 
@@ -644,18 +708,105 @@ pe "$BROWSER_OPEN \$RHOAI_URL"
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-echo -e "# ${RED}   ACTION REQUIRED -- Deploy model for inference${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Register model in Model Registry${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 6️⃣  🌐 RHOAI Dashboard → fsi-demo project"
-echo "#   → 'Models' tab → Click 'Deploy model'"
-echo "#   → Model name:      fsi-demo-model"
-echo "#   → Serving runtime:  'Triton Inference Server (GPU)'"
-echo "#   → Model framework:  tensorflow - 2"
-echo "#   → Model location:   Existing connection → minio-models"
-echo "#   → Path: production/demo-model"
+echo "# 🌐 RHOAI Dashboard → 'Model Registry' in left sidebar"
+echo "#   → Select registry: fsi-model-registry"
+echo "#   → Click 'Register model'"
+echo "#"
+echo "# 📝 Model details:"
+echo "#   → Model name:        fsi-fraud-detection"
+echo "#   → Model description:"
+echo "#     Binary classifier for real-time transaction fraud detection."
+echo "#     5-feature input (amount, category, time delta, account age,"
+echo "#     frequency). Sigmoid output (0-1), >0.5 = suspected fraud."
+echo "#"
+echo "# 📦 Version details:"
+echo "#   → Version name:      v1.0"
+echo "#   → Version description:"
+echo "#     Initial release. Trained on 100K synthetic transactions."
+echo "#     Architecture: 5→10(ReLU)→1(Sigmoid). Validation AUC: 0.94."
+echo "#"
+echo "# 🔗 Model location:"
+echo "#   → Source model format:  tensorflow"
+echo "#   → Source model version: 2"
+echo "#   → Model location (URI): s3://models/production/demo-model/"
+echo "#"
+echo "#   → Click 'Register model'"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Add custom properties${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 Click into 'fsi-fraud-detection' → 'v1.0' version"
+echo "#   → Look for 'Properties' or 'Custom properties' section"
+echo "#   → Add these key-value pairs:"
+echo "#"
+echo "#   Key                    Value"
+echo "#   ─────────────────────  ──────────────────────────────────"
+echo "#   team                   FSI Risk Analytics"
+echo "#   use_case               Real-time fraud detection"
+echo "#   regulatory_framework   PCI-DSS, SOX"
+echo "#   data_classification    Confidential - PII Adjacent"
+echo "#   owner                  Adam Young"
+echo "#   gpu_type               NVIDIA A10G (24GB VRAM)"
+echo "#   serving_runtime        NVIDIA Triton 24.01"
+echo "#   training_dataset       synthetic_transactions_100k"
+echo "#   validation_auc         0.94"
+echo "#   risk_tier              Tier 2 - Model risk review complete"
+echo "#   approval_status        Approved for staging"
+echo "#"
+echo "# 💡 Why this matters in FSI:"
+echo "#   • Regulators can audit which model version is in production"
+echo "#   • Risk teams see validation metrics + approval status"
+echo "#   • Data governance tracks PII-adjacent classifications"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo "# ✅ Model registered with full metadata"
+echo "#   Next: deploy it directly from the registry"
+
+wait
+}
+
+section_10() {
+begin_section 10 "🚀" "Deploy from Model Registry" || return 0
+# Depends on: Model registered (Section 9), ServingRuntime (Section 7)
+ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+verify_step "ServingRuntime template exists" "oc get template triton-kserve-gpu-template -n redhat-ods-applications 2>/dev/null"
+echo "#"
+echo "# 🚀 Deploy directly from the Model Registry"
+echo "#   • The registry knows the artifact URI, format, and version"
+echo "#   • Deployment is tracked -- shows up in the registry's Deployments tab"
+echo "#   • Full lineage: trained → registered → deployed → serving"
+
+wait
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Deploy model from registry${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 RHOAI Dashboard → Model Registry → fsi-model-registry"
+echo "#   → Click 'fsi-fraud-detection'"
+echo "#   → On version 'v1.0' row → click 'Deploy' (kebab menu or button)"
+echo "#"
+echo "# 📝 Deployment settings:"
+echo "#   → Model name:       fsi-demo-model"
+echo "#   → Project:           fsi-demo"
+echo "#   → Serving runtime:   Triton Inference Server (GPU)"
+echo "#   → Model framework:   tensorflow - 2"
+echo "#   → Model location:    should be pre-filled from registry"
+echo "#     (if not: Existing connection → minio-models, path: production)"
 echo "#   → Advanced settings:"
-echo "#     • External route: UNCHECKED (internal access only)"
+echo "#     • External route: UNCHECKED"
 echo "#     • Token auth: UNCHECKED"
 echo "#   → Click 'Deploy'"
 echo "#   → ⏳ Wait for status: ✅ green checkmark"
@@ -664,14 +815,38 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 wait
 
 echo ""
-echo "# ✅ Model deployment started -- wait for green checkmark"
-echo "#   No external route -- we'll test from inside the cluster"
+echo "# 🔄 Verify deployment from CLI while we wait:"
+
+wait
+
+pe "oc get inferenceservice -n fsi-demo"
+
+# Capture the InferenceService name (Dashboard may auto-generate it from registry)
+ISVC_NAME=$(oc get inferenceservice -n fsi-demo -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+echo ""
+echo "# ⏳ Waiting for model to load on GPU..."
+echo "#   InferenceService name: ${ISVC_NAME:-unknown}"
+
+verify_step "InferenceService is Ready" "oc get inferenceservice -n fsi-demo -o jsonpath='{.items[0].status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True"
+
+echo ""
+echo "# 🔍 Check the registry -- Deployments tab should now show this deployment"
+echo "#   → Go back to Model Registry → fsi-fraud-detection"
+echo "#   → Click 'Deployments' tab"
+echo "#   → ${ISVC_NAME:-the deployment} should appear with status"
+
+wait
+
+echo ""
+echo "# ✅ Model deployed from registry with full lineage tracking"
 
 wait
 }
 
-section_9() {
-begin_section 9 "🔮" "Test Inference" || return 0
+section_11() {
+begin_section 11 "🔮" "Test Inference" || return 0
+# Depends on: Model deployed (Section 10)
+verify_step "InferenceService is Ready" "oc get inferenceservice -n fsi-demo -o jsonpath='{.items[0].status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True"
 echo "#"
 echo "# 🎯 The payoff -- send data to the live model and get a prediction!"
 echo "#   • Our model: 5 floats in → 1 sigmoid probability out"
@@ -685,7 +860,7 @@ echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━�
 echo -e "# ${RED}   ACTION REQUIRED -- Run inference notebook${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 🌐 In JupyterLab (same workbench):"
+echo "# 🌐 In JupyterLab (same workbench from Section 8):"
 echo "#   → Navigate to RHOAI-demo/notebooks/"
 echo "#   → Open: 📓 inference-test.ipynb"
 echo "#   → Run each cell with Shift+Enter"
@@ -704,12 +879,82 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 wait
 
 echo ""
+echo "# ✅ Full lifecycle complete:"
+echo "#   GPU setup → RHOAI install → train on GPU → register"
+echo "#   → deploy from registry → live inference"
+
+wait
+}
+
+section_12() {
+begin_section 12 "⚙️ " "Data Science Pipelines & Experiments" || return 0
+# Depends on: RHOAI installed (Section 4)
+ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+echo "#"
+echo "# ⚙️  Data Science Pipelines = automated, repeatable workflows"
+echo "#   • Kubeflow Pipelines (KFP) on OpenShift"
+echo "#   • Each step = a container with defined inputs/outputs"
+echo "#   • Steps run in sequence or parallel on the cluster"
+echo "#   • Triggered on schedule, git push, or new data"
+echo "#"
+echo "# 📋 A standard ML pipeline looks like:"
+echo "#   1️⃣  Data Processing   → clean, normalize raw data"
+echo "#   2️⃣  Feature Extract   → derive model features"
+echo "#   3️⃣  Train Model       → fit on GPU, output SavedModel"
+echo "#   4️⃣  Validate          → score against holdout set"
+echo "#   5️⃣  Upload Model      → push artifacts to S3"
+echo "#"
+echo "# 📊 Experiment Tracking:"
+echo "#   • Pipeline runs can be used as experiments"
+echo "#   • The run view tracks those experiments"
+echo "#   • Compare results across runs, reproduce any previous run"
+echo "#"
+echo "# 💡 We did Sections 8-11 manually so you could see each step."
+echo "#   In production, the training workflow is a pipeline."
+echo "#   Deployment stays separate (Model Registry → Deploy)."
+
+wait
+
+# TODO: Add pipeline demo here
+# Best option: coin toss pipeline from ai-accelerator
+#   - Simple, pre-built, demonstrates the concept
+#   - Source: ai-accelerator/documentation/training_and_learning/data_science_pipeline/
+#   - Requires: pipeline server (DSPA), namespace, MinIO connection
+# Need to verify pipeline backend: Tekton vs Argo in RHOAI 3.0
+
+echo ""
+echo "# 🔧 TODO: Pipeline demo section"
+echo "#   • Deploy pipeline server (DataSciencePipelinesApplication)"
+echo "#   • Import a sample pipeline"
+echo "#   • Run it and show Experiments tracking"
+echo "#"
+echo "# Checking pipeline infrastructure on this cluster..."
+
+wait
+
+pe "oc get datasciencepipelinesapplications -A 2>/dev/null || echo 'No pipeline server deployed yet'"
+
+wait
+}
+
+section_13() {
+echo ""
 echo -e "# 🎉 ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
 echo "#"
 echo -e "#   ${GREEN}Demo complete!${COLOR_RESET}"
 echo "#"
-echo -e "#   Bare metal GPUs → trained model → live inference"
-echo -e "#   All on ${CYAN}OpenShift AI${COLOR_RESET} 🚀"
+echo "#   What we covered:"
+echo "#   • GPU infrastructure (NFD + NVIDIA Operator)"
+echo "#   • Red Hat OpenShift AI installation"
+echo "#   • Hardware Profiles with GPU tolerations"
+echo "#   • Workbenches and GPU-accelerated training"
+echo "#   • Model Registry with FSI metadata"
+echo "#   • Model deployment from registry"
+echo "#   • Live inference on A10G GPU"
+echo "#   • Data Science Pipelines (automation)"
+echo "#"
+echo -e "#   Bare metal GPUs → trained model → registered → deployed → inference"
+echo -e "#   All on ${CYAN}Red Hat OpenShift AI${COLOR_RESET} 🚀"
 echo "#"
 echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
 }
@@ -727,3 +972,7 @@ section_6
 section_7
 section_8
 section_9
+section_10
+section_11
+section_12
+section_13
