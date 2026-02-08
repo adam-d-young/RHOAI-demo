@@ -1,0 +1,41 @@
+# ClusterPolicy - Configures the NVIDIA GPU Operator behavior
+# This tells the operator what GPU software stack components to deploy:
+#   - driver:        Compiles & installs NVIDIA kernel modules on GPU nodes
+#   - devicePlugin:  Exposes nvidia.com/gpu resources to the Kubernetes scheduler
+#   - dcgm/exporter: Data Center GPU Manager for monitoring & metrics
+#   - toolkit:       Container runtime hooks so pods can access GPUs
+#   - gfd:           GPU Feature Discovery - labels nodes with GPU properties
+apiVersion: nvidia.com/v1
+kind: ClusterPolicy
+metadata:
+  name: gpu-cluster-policy
+spec:
+  operator:
+    defaultRuntime: crio            # OpenShift uses CRI-O
+    runtimeClass: nvidia
+  dcgm:
+    enabled: true                   # GPU metrics collection
+  gfd:
+    enabled: true                   # GPU feature labels on nodes
+  dcgmExporter:
+    enabled: true                   # Prometheus metrics exporter
+  driver:
+    enabled: true                   # Install NVIDIA drivers on GPU nodes
+    kernelModuleType: auto
+  devicePlugin:
+    enabled: true                   # Expose nvidia.com/gpu to K8s scheduler
+  nodeStatusExporter:
+    enabled: true
+  daemonsets:
+    rollingUpdate:
+      maxUnavailable: 10%
+    tolerations:
+      - key: nvidia.com/gpu         # Allow GPU operator pods on tainted GPU nodes
+        operator: Exists
+    updateStrategy: RollingUpdate
+  sandboxWorkloads:
+    defaultWorkload: container
+    enabled: false
+  toolkit:
+    enabled: true                   # NVIDIA container toolkit
+    installDir: /usr/local/nvidia

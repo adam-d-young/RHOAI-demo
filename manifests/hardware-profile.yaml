@@ -1,0 +1,24 @@
+# HardwareProfile - Defines GPU resource options for RHOAI workbenches
+# Key concept: GPU nodes have a taint (nvidia.com/gpu) that prevents
+# non-GPU workloads from landing on them. This profile includes the
+# matching toleration so RHOAI workbenches CAN schedule on GPU nodes.
+apiVersion: infrastructure.opendatahub.io/v1alpha1
+kind: HardwareProfile
+metadata:
+  name: nvidia-gpu
+  namespace: redhat-ods-operator
+spec:
+  identifiers:
+    - defaultCount: 1               # Default 1 GPU per workbench
+      displayName: NVIDIA GPU
+      identifier: nvidia.com/gpu    # K8s resource name exposed by device plugin
+      maxCount: 2
+      minCount: 1
+      resourceType: Accelerator
+  scheduling:
+    node:
+      tolerations:
+        - effect: NoSchedule        # Matches the taint on GPU nodes
+          key: nvidia.com/gpu
+          operator: Exists
+    type: Node
