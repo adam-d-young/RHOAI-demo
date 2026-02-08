@@ -515,17 +515,13 @@ echo "#   → Serving runtime:   vLLM NVIDIA GPU ServingRuntime for KServe"
 echo "#   → Hardware profile:  nvidia-gpu (NVIDIA GPU A10G)"
 echo "#   → Model location:    should be pre-filled from catalog"
 echo "#     oci://registry.redhat.io/rhelai1/modelcar-granite-3-1-8b-instruct-quantized-w4a16:1.5"
+echo "#   → Additional serving runtime arguments:"
+echo "#     --max-model-len=4096"
+echo "#     (default 131K context needs more KV cache than A10G 24GB can hold)"
 echo "#   → Advanced settings:"
 echo "#     • External route: UNCHECKED (internal only)"
 echo "#     • Token auth: UNCHECKED"
 echo "#   → Click 'Deploy'"
-echo "#"
-echo "# ⚠️  AFTER deploying, patch the model length to fit A10G memory:"
-echo "#   The default 131K context window needs more KV cache than our"
-echo "#   24GB GPU can hold. 4096 tokens is plenty for a chat demo."
-echo "#"
-echo "#   oc patch inferenceservice <name> -n granite-demo --type merge \\"
-echo "#     -p '{\"spec\":{\"predictor\":{\"model\":{\"args\":[\"--max-model-len\",\"4096\"]}}}}'"
 echo "#"
 echo "# ⏳ The model image will start pulling. This takes a few minutes"
 echo "#   if not pre-warmed. We'll fill the time in the next section!"
@@ -534,20 +530,11 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 wait
 
 echo ""
-echo "# 🔄 Verify the deployment started and patch context window:"
+echo "# 🔄 Verify the deployment started:"
 
 wait
 
 pe "oc get inferenceservice -n granite-demo"
-
-GRANITE_ISVC_NAME=$(oc get inferenceservice -n granite-demo -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
-
-echo ""
-echo "# 🔧 Patching max context length to fit A10G VRAM..."
-
-wait
-
-pe "oc patch inferenceservice ${GRANITE_ISVC_NAME} -n granite-demo --type merge -p '{\"spec\":{\"predictor\":{\"model\":{\"args\":[\"--max-model-len\",\"4096\"]}}}}'"
 
 echo ""
 echo "# ⏳ Model is pulling/loading. Let's talk about serving runtimes"
