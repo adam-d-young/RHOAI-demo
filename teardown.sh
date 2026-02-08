@@ -153,6 +153,7 @@ echo ""
 echo "═══════════════════════════════════════════"
 echo "Step 2: Delete demo namespaces"
 echo "═══════════════════════════════════════════"
+echo -e "  ${CYAN}(Deleting while RHOAI operator is still running so it can reconcile finalizers)${NC}"
 
 safe_delete_namespace "granite-demo"
 safe_delete_namespace "fsi-demo"
@@ -182,10 +183,24 @@ safe_delete "template" "triton-kserve-gpu-template" "redhat-ods-applications"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 6: Uninstall RHOAI operator"
+echo "Step 6: Wait for namespace cleanup"
+echo "═══════════════════════════════════════════"
+echo -e "  ${YELLOW}Waiting for namespaces to fully terminate before removing RHOAI...${NC}"
+
+for ns in granite-demo fsi-demo rhoai-model-registries; do
+  if oc get namespace "$ns" &>/dev/null; then
+    echo -e "  ${YELLOW}Waiting for ${ns}...${NC}"
+    oc wait --for=delete namespace/"$ns" --timeout=120s 2>/dev/null || true
+  fi
+done
+echo -e "  ${GREEN}Namespaces cleaned up${NC}"
+echo ""
+
+echo "═══════════════════════════════════════════"
+echo "Step 7: Uninstall RHOAI operator"
 echo "═══════════════════════════════════════════"
 
-# Delete DSC first (this tears down all RHOAI components)
+# Delete DSC (this tears down all RHOAI components)
 safe_delete "datasciencecluster" "default-dsc"
 
 if oc get datasciencecluster default-dsc &>/dev/null; then
@@ -215,7 +230,7 @@ fi
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 7: Reset MinIO and MySQL data"
+echo "Step 8: Reset MinIO and MySQL data"
 echo "═══════════════════════════════════════════"
 
 echo -e "  ${YELLOW}Clearing MinIO data (models bucket, uploaded artifacts)...${NC}"
@@ -257,7 +272,7 @@ echo -e "${RED}═════════════════════�
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 7: Delete MinIO completely"
+echo "Step 9: Delete MinIO completely"
 echo "═══════════════════════════════════════════"
 
 safe_delete "deployment" "minio" "default"
@@ -269,14 +284,14 @@ safe_delete "pvc" "minio-pvc" "default"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 8: Delete MySQL (Model Registry DB)"
+echo "Step 10: Delete MySQL (Model Registry DB)"
 echo "═══════════════════════════════════════════"
 
 safe_delete_namespace "rhoai-model-registry"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 9: Delete GPU operators"
+echo "Step 11: Delete GPU operators"
 echo "═══════════════════════════════════════════"
 
 echo ""
@@ -320,7 +335,7 @@ fi
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 10: Delete GPU machineset"
+echo "Step 12: Delete GPU machineset"
 echo "═══════════════════════════════════════════"
 
 echo ""
@@ -345,7 +360,7 @@ fi
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 11: Remove demo user"
+echo "Step 13: Remove demo user"
 echo "═══════════════════════════════════════════"
 
 # Note: Removing htpasswd IDP from OAuth is complex (need to patch the array).
