@@ -93,9 +93,9 @@ Reset after the demo:
 ./teardown.sh --full   # Full cluster reset -- remove everything (requires confirmation)
 ```
 
-Demo reset removes `granite-demo`, `fsi-demo`, model registry, hardware profile, and serving runtimes. Infrastructure (MinIO, MySQL, GPU operators, RHOAI) is preserved so you can re-run the demo.
+Demo reset removes `granite-demo`, `fsi-demo`, model registry, hardware profile, serving runtimes, and the RHOAI operator (so it can be re-installed live in Section 4). MinIO and MySQL data is cleared but the services are restarted fresh. GPU operators are preserved.
 
-Full reset also removes RHOAI, MinIO, MySQL, GPU operators, and machinesets. Requires typing `FULL RESET` to confirm.
+Full reset also removes MinIO, MySQL, GPU operators, and machinesets. Requires typing `FULL RESET` to confirm.
 
 ## Demo Sections
 

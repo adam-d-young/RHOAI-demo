@@ -76,10 +76,11 @@ else
   echo "  • Hardware profile (nvidia-gpu)"
   echo "  • Triton serving runtime template"
   echo "  • LlamaStack Helm releases"
+  echo "  • RHOAI operator (uninstalled so Section 4 can re-install live)"
   echo "  • MinIO data (models bucket, uploaded artifacts)"
   echo "  • MySQL data (model registry metadata)"
   echo ""
-  echo "Infrastructure (MinIO, MySQL, GPU, RHOAI) will be preserved but"
+  echo "Infrastructure (MinIO, MySQL, GPU operators) will be preserved but"
   echo "storage data will be cleared so the demo starts fresh."
   echo ""
   read -p "Continue? (y/n): " CONFIRM
@@ -181,15 +182,35 @@ safe_delete "template" "triton-kserve-gpu-template" "redhat-ods-applications"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 6: Revert LlamaStack DSC patch"
+echo "Step 6: Uninstall RHOAI operator"
 echo "═══════════════════════════════════════════"
 
+# Delete DSC first (this tears down all RHOAI components)
+safe_delete "datasciencecluster" "default-dsc"
+
 if oc get datasciencecluster default-dsc &>/dev/null; then
-  echo -e "  ${YELLOW}Setting llamastackoperator back to Removed...${NC}"
-  oc patch datasciencecluster default-dsc --type merge \
-    -p '{"spec":{"components":{"llamastackoperator":{"managementState":"Removed"}}}}' 2>/dev/null || true
-else
-  echo -e "  ${CYAN}DataScienceCluster not found${NC}"
+  echo -e "  ${YELLOW}Waiting for DataScienceCluster to be fully removed...${NC}"
+  oc wait --for=delete datasciencecluster/default-dsc --timeout=120s 2>/dev/null || true
+fi
+
+# Delete DSCI if present
+DSCI_NAME=$(oc get dsci -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+if [ -n "$DSCI_NAME" ]; then
+  safe_delete "dsci" "$DSCI_NAME"
+fi
+
+# Delete subscription
+RHOAI_SUB=$(oc get subscription -n redhat-ods-operator -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+if [ -n "$RHOAI_SUB" ]; then
+  echo -e "  ${YELLOW}Deleting RHOAI Subscription...${NC}"
+  oc delete subscription "$RHOAI_SUB" -n redhat-ods-operator 2>/dev/null || true
+fi
+
+# Delete CSV
+RHOAI_CSV=$(oc get csv -n redhat-ods-operator -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+if [ -n "$RHOAI_CSV" ]; then
+  echo -e "  ${YELLOW}Deleting RHOAI CSV: ${RHOAI_CSV}...${NC}"
+  oc delete csv "$RHOAI_CSV" -n redhat-ods-operator 2>/dev/null || true
 fi
 echo ""
 
@@ -236,39 +257,7 @@ echo -e "${RED}═════════════════════�
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 7: Uninstall RHOAI operator"
-echo "═══════════════════════════════════════════"
-
-# Delete DSC first
-safe_delete "datasciencecluster" "default-dsc"
-
-# Wait for DSC to actually be gone
-echo -e "  ${YELLOW}Waiting for DataScienceCluster to be fully removed...${NC}"
-oc wait --for=delete datasciencecluster/default-dsc --timeout=120s 2>/dev/null || true
-
-# Delete DSCI if present
-DSCI_NAME=$(oc get dsci -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
-if [ -n "$DSCI_NAME" ]; then
-  safe_delete "dsci" "$DSCI_NAME"
-fi
-
-# Delete subscription
-RHOAI_SUB=$(oc get subscription -n redhat-ods-operator -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
-if [ -n "$RHOAI_SUB" ]; then
-  echo -e "  ${YELLOW}Deleting RHOAI Subscription...${NC}"
-  oc delete subscription "$RHOAI_SUB" -n redhat-ods-operator 2>/dev/null || true
-fi
-
-# Delete CSV
-RHOAI_CSV=$(oc get csv -n redhat-ods-operator -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
-if [ -n "$RHOAI_CSV" ]; then
-  echo -e "  ${YELLOW}Deleting RHOAI CSV: ${RHOAI_CSV}...${NC}"
-  oc delete csv "$RHOAI_CSV" -n redhat-ods-operator 2>/dev/null || true
-fi
-echo ""
-
-echo "═══════════════════════════════════════════"
-echo "Step 8: Delete MinIO"
+echo "Step 7: Delete MinIO completely"
 echo "═══════════════════════════════════════════"
 
 safe_delete "deployment" "minio" "default"
@@ -280,14 +269,14 @@ safe_delete "pvc" "minio-pvc" "default"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 9: Delete MySQL (Model Registry DB)"
+echo "Step 8: Delete MySQL (Model Registry DB)"
 echo "═══════════════════════════════════════════"
 
 safe_delete_namespace "rhoai-model-registry"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 10: Delete GPU operators"
+echo "Step 9: Delete GPU operators"
 echo "═══════════════════════════════════════════"
 
 echo ""
@@ -331,7 +320,7 @@ fi
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 11: Delete GPU machineset"
+echo "Step 10: Delete GPU machineset"
 echo "═══════════════════════════════════════════"
 
 echo ""
@@ -356,7 +345,7 @@ fi
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 12: Remove demo user"
+echo "Step 11: Remove demo user"
 echo "═══════════════════════════════════════════"
 
 # Note: Removing htpasswd IDP from OAuth is complex (need to patch the array).
@@ -388,7 +377,7 @@ echo "Cleaned up demo resources. Setup resources preserved:"
 echo "  ✅ MinIO (S3 storage) -- restarted with empty data"
 echo "  ✅ MySQL (Model Registry DB) -- restarted with empty data"
 echo "  ✅ GPU operators -- still running"
-echo "  ✅ RHOAI operator -- still installed"
+echo "  ❌ RHOAI operator -- removed (re-install live in Section 4)"
 echo ""
 echo "Namespace cleanup may take a minute. Check with:"
 echo "  oc get namespaces | grep -E 'fsi|granite|rhoai-model-registries'"
