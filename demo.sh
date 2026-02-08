@@ -728,7 +728,9 @@ pe "oc get inferenceservice -n granite-demo"
 verify_step "Granite InferenceService is Ready" "oc get inferenceservice -n granite-demo -o jsonpath='{.items[0].status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True"
 
 echo ""
-echo "# 🎯 Granite is serving! Let's set up the chat playground."
+echo "# 🎯 Granite is serving! You can see it in the RHOAI Dashboard:"
+echo "#   → RHOAI Dashboard → Data Science Projects → granite-demo"
+echo "#   → 'Model' tab shows the deployed model, status, and endpoint"
 
 wait
 
@@ -740,9 +742,14 @@ GRANITE_ENDPOINT="http://${GRANITE_ISVC}-predictor.granite-demo.svc.cluster.loca
 GRANITE_MODEL_ID=$(oc exec -n granite-demo deploy/${GRANITE_ISVC}-predictor -c kserve-container -- curl -s http://localhost:8080/v1/models 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])" 2>/dev/null) || GRANITE_MODEL_ID="granite"
 
 echo ""
-echo "# 🔗 Granite internal endpoint:"
-echo "#   ${GRANITE_ENDPOINT}"
-echo "#   Model ID: ${GRANITE_MODEL_ID}"
+echo "# ┌─────────────────────────────────────────────────────────────┐"
+echo "# │  Granite Internal Endpoint:                                 │"
+echo "# │  ${GRANITE_ENDPOINT}"
+echo "# │                                                             │"
+echo "# │  Model ID: ${GRANITE_MODEL_ID}"
+echo "# └─────────────────────────────────────────────────────────────┘"
+echo "#"
+echo "# 💡 These values are needed for LlamaStack config in the next step."
 
 wait
 
@@ -790,7 +797,7 @@ echo "# ⏳ Waiting for LlamaStack API server to start..."
 
 wait
 
-verify_step "LlamaStack pod is Running" "oc get pods -n granite-demo -l app.kubernetes.io/name=llama-stack -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+verify_step "LlamaStack pod is Running" "oc get pods -n granite-demo -l app=llama-stack -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
 
 echo ""
 echo "# 🔧 Step 2: Install LlamaStack Playground UI"
@@ -827,14 +834,14 @@ echo "# ⏳ Waiting for Playground to start..."
 
 wait
 
-verify_step "Playground pod is Running" "oc get pods -n granite-demo -l app.kubernetes.io/name=llama-stack-playground -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+verify_step "Playground pod is Running" "oc get pods -n granite-demo -l app=llama-stack-playground -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
 
 echo ""
 echo "# 🌐 Opening the Playground..."
 
 wait
 
-pe "PLAYGROUND_URL=\$(oc get route -n granite-demo -l app.kubernetes.io/name=llama-stack-playground -o jsonpath='https://{.items[0].spec.host}') && echo \$PLAYGROUND_URL"
+pe "PLAYGROUND_URL=\$(oc get route -n granite-demo -l app=llama-stack-playground -o jsonpath='https://{.items[0].spec.host}') && echo \$PLAYGROUND_URL"
 
 pe "$BROWSER_OPEN \$PLAYGROUND_URL"
 
