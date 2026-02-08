@@ -17,7 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GPU_SETUP_DIR="${SCRIPT_DIR}/../ocp-gpu-setup"
-HELMCHARTS_DIR="${SCRIPT_DIR}/../genaiops-helmcharts/charts"
+GENAIOPS_HELM_REPO="https://rhoai-genaiops.github.io/genaiops-helmcharts/"
 
 # Helper: find a driver pod name (returns empty string if none found)
 find_driver_pod() {
@@ -59,13 +59,6 @@ fi
 if ! command -v helm &>/dev/null; then
   echo "WARNING: helm not found. Install with: brew install helm"
   echo "  Helm is needed for LlamaStack deployment in the demo."
-  echo ""
-fi
-
-if [ ! -d "$HELMCHARTS_DIR" ]; then
-  echo "WARNING: genaiops-helmcharts not found at: $HELMCHARTS_DIR"
-  echo "  Clone it alongside this repo:"
-  echo "    git clone <genaiops-helmcharts-url> ../genaiops-helmcharts"
   echo ""
 fi
 
@@ -576,11 +569,53 @@ fi
 echo ""
 
 ######################################################################
-# Step 9: Pre-warm GPU Serving Images (optional)
+# Step 9: Add GenAIOps Helm Chart Repository to OpenShift
 ######################################################################
 
 echo "=============================================="
-echo "Step 9: Pre-warm GPU Serving Images (optional)"
+echo "Step 9: Add GenAIOps Helm Chart Repository"
+echo "=============================================="
+echo ""
+echo "This makes LlamaStack Helm charts available in the"
+echo "OpenShift console (Developer → Helm → Chart Repository)."
+echo ""
+
+if oc get helmchartrepository genaiops-helmcharts &>/dev/null; then
+  echo "GenAIOps Helm chart repository already configured. Skipping."
+else
+  cat <<HELMREPO_EOF | oc apply -f -
+apiVersion: helm.openshift.io/v1beta1
+kind: HelmChartRepository
+metadata:
+  name: genaiops-helmcharts
+spec:
+  connectionConfig:
+    url: ${GENAIOPS_HELM_REPO}
+  name: GenAIOps Helm Charts
+HELMREPO_EOF
+
+  echo "GenAIOps Helm chart repository added."
+  echo "Charts will be visible in: Developer → Helm → Chart Repository"
+fi
+
+# Also add the repo locally for CLI helm install
+if command -v helm &>/dev/null; then
+  if ! helm repo list 2>/dev/null | grep -q genaiops; then
+    helm repo add genaiops "${GENAIOPS_HELM_REPO}" 2>/dev/null || true
+    helm repo update genaiops 2>/dev/null || true
+    echo "Helm repo added locally: genaiops"
+  else
+    echo "Local Helm repo 'genaiops' already configured."
+  fi
+fi
+echo ""
+
+######################################################################
+# Step 10: Pre-warm GPU Serving Images (optional)
+######################################################################
+
+echo "=============================================="
+echo "Step 10: Pre-warm GPU Serving Images (optional)"
 echo "=============================================="
 echo ""
 echo "This pulls large serving runtime images onto GPU nodes so"
@@ -690,11 +725,11 @@ fi
 echo ""
 
 ######################################################################
-# Step 10: Final Verification
+# Step 11: Final Verification
 ######################################################################
 
 echo "=============================================="
-echo "Step 10: Final Verification"
+echo "Step 11: Final Verification"
 echo "=============================================="
 echo ""
 

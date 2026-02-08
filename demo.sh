@@ -15,7 +15,6 @@
 ######################################################################
 
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-HELMCHARTS_DIR="${DEMO_DIR}/../genaiops-helmcharts/charts"
 
 # Preflight: check required tools
 MISSING=""
@@ -690,7 +689,7 @@ echo "#   • Creates a LlamaStackDistribution CR"
 echo "#   • The RHOAI-managed operator sees this CR and deploys:"
 echo "#     - LlamaStack API server (port 8321)"
 echo "#     - ConfigMap with model routing config"
-echo "#   • Uses a Helm chart from genaiops-helmcharts"
+echo "#   • Uses a Helm chart from the GenAIOps Helm repo"
 
 wait
 
@@ -699,7 +698,7 @@ echo "# 📋 Installing LlamaStack operator instance via Helm..."
 
 wait
 
-pe "helm install llama-stack-instance ${HELMCHARTS_DIR}/llama-stack-operator-instance \
+pe "helm install llama-stack-instance genaiops/llama-stack-operator-instance \
   --namespace granite-demo \
   --set models[0].name=${GRANITE_MODEL_ID} \
   --set models[0].url=${GRANITE_ENDPOINT} \
@@ -726,7 +725,7 @@ echo "#   • Creates an OpenShift Route for browser access"
 
 wait
 
-pe "helm install llama-stack-playground ${HELMCHARTS_DIR}/llama-stack-playground \
+pe "helm install llama-stack-playground genaiops/llama-stack-playground \
   --namespace granite-demo \
   --set playground.llamaStackUrl=http://llama-stack:8321 \
   --set playground.defaultModel=${GRANITE_MODEL_ID} \

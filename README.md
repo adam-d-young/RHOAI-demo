@@ -25,9 +25,10 @@ Clone sibling repos alongside this one:
 ```
 your-workspace/
   ocp-gpu-setup/          # GPU infrastructure setup
-  genaiops-helmcharts/    # LlamaStack Helm charts
   RHOAI-demo/             # This repo
 ```
+
+LlamaStack Helm charts are installed from the published [GenAIOps Helm repo](https://rhoai-genaiops.github.io/genaiops-helmcharts/) -- no local clone needed. `setup.sh` registers this repo in OpenShift and adds it to the local Helm CLI.
 
 ### Tools
 
