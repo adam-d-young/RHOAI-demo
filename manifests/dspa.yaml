@@ -1,0 +1,54 @@
+# Data Science Pipelines Application (DSPA)
+# Deploys the KFP v2 pipeline server in the fsi-demo namespace.
+# Uses our existing MinIO for pipeline artifact storage.
+#
+# Prerequisites:
+#   - fsi-demo namespace exists (created in Section 8)
+#   - MinIO running in default namespace with 'models' bucket
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pipeline-s3
+  namespace: fsi-demo
+stringData:
+  AWS_ACCESS_KEY_ID: minio
+  AWS_SECRET_ACCESS_KEY: minio123
+type: Opaque
+---
+apiVersion: datasciencepipelinesapplications.opendatahub.io/v1
+kind: DataSciencePipelinesApplication
+metadata:
+  name: dspa
+  namespace: fsi-demo
+spec:
+  apiServer:
+    deploy: true
+    enableSamplePipeline: false
+    enableOauth: true
+    cacheEnabled: true
+  database:
+    mariaDB:
+      deploy: true
+      pipelineDBName: mlpipeline
+      pvcSize: 10Gi
+      username: mlpipeline
+  dspVersion: v2
+  objectStorage:
+    externalStorage:
+      basePath: 'pipeline-artifacts'
+      bucket: models
+      host: 'minio-service.default.svc.cluster.local:9000'
+      port: ''
+      region: us-east-1
+      s3CredentialsSecret:
+        accessKey: AWS_ACCESS_KEY_ID
+        secretKey: AWS_SECRET_ACCESS_KEY
+        secretName: pipeline-s3
+      scheme: http
+  persistenceAgent:
+    deploy: true
+    numWorkers: 2
+  scheduledWorkflow:
+    cronScheduleTimezone: UTC
+    deploy: true

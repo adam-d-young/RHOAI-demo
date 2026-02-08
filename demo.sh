@@ -896,8 +896,9 @@ wait
 
 section_12() {
 begin_section 12 "⚙️ " "Data Science Pipelines & Experiments" || return 0
-# Depends on: RHOAI installed (Section 4)
+# Depends on: RHOAI installed (Section 4), fsi-demo namespace (Section 8)
 ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+verify_step "fsi-demo namespace exists" "oc get namespace fsi-demo 2>/dev/null"
 echo "#"
 echo "# ⚙️  Data Science Pipelines = automated, repeatable workflows"
 echo "#   • Kubeflow Pipelines (KFP) on OpenShift"
@@ -912,35 +913,188 @@ echo "#   3️⃣  Train Model       → fit on GPU, output SavedModel"
 echo "#   4️⃣  Validate          → score against holdout set"
 echo "#   5️⃣  Upload Model      → push artifacts to S3"
 echo "#"
-echo "# 📊 Experiment Tracking:"
-echo "#   • Pipeline runs can be used as experiments"
-echo "#   • The run view tracks those experiments"
-echo "#   • Compare results across runs, reproduce any previous run"
-echo "#"
 echo "# 💡 We did Sections 8-11 manually so you could see each step."
 echo "#   In production, the training workflow is a pipeline."
 echo "#   Deployment stays separate (Model Registry → Deploy)."
 
 wait
 
-# TODO: Add pipeline demo here
-# Best option: coin toss pipeline from ai-accelerator
-#   - Simple, pre-built, demonstrates the concept
-#   - Source: ai-accelerator/documentation/training_and_learning/data_science_pipeline/
-#   - Requires: pipeline server (DSPA), namespace, MinIO connection
-# Need to verify pipeline backend: Tekton vs Argo in RHOAI 3.0
-
 echo ""
-echo "# 🔧 TODO: Pipeline demo section"
-echo "#   • Deploy pipeline server (DataSciencePipelinesApplication)"
-echo "#   • Import a sample pipeline"
-echo "#   • Run it and show Experiments tracking"
-echo "#"
-echo "# Checking pipeline infrastructure on this cluster..."
+echo "# 🔧 Step 1: Deploy the Pipeline Server (DSPA)"
+echo "#   • DataSciencePipelinesApplication = the KFP v2 engine"
+echo "#   • Deploys: API server, MariaDB, persistence agent"
+echo "#   • Stores pipeline artifacts in our MinIO bucket"
 
 wait
 
-pe "oc get datasciencepipelinesapplications -A 2>/dev/null || echo 'No pipeline server deployed yet'"
+echo ""
+echo "# 📋 Here's the DSPA manifest:"
+
+wait
+
+pe "bat --style=grid,numbers manifests/dspa.yaml"
+
+wait
+
+pe "oc apply -f manifests/dspa.yaml"
+
+echo ""
+echo "# ⏳ Waiting for pipeline server to come up..."
+
+wait
+
+verify_step "DSPA is Ready" "oc get dspa dspa -n fsi-demo -o jsonpath='{.status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True"
+
+pe "oc get dspa -n fsi-demo"
+
+wait
+
+echo ""
+echo "# 🔧 Step 2: Compile the pipeline"
+echo "#   • Pipeline is written in Python using KFP v2 SDK"
+echo "#   • Each @dsl.component becomes a container step"
+echo "#   • Compiling produces an IR YAML (Intermediate Representation)"
+echo "#"
+echo "# 📋 What is IR YAML?"
+echo "#   • Platform-agnostic pipeline specification"
+echo "#   • Python SDK → compiles → IR YAML → imported into RHOAI"
+echo "#   • The DSPA backend translates IR YAML into an Argo Workflow"
+echo "#   • Same IR works on any KFP v2-compatible backend"
+echo "#"
+echo "# 📋 Our pipeline has 4 steps (we'll add the 5th with Elyra):"
+echo "#   data-processing → feature-extract → train-model → upload-model"
+
+wait
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Compile pipeline in workbench${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 In JupyterLab terminal (same workbench from Section 8):"
+echo "#   → Make sure you're in the RHOAI-demo/notebooks/ directory"
+echo "#   → Run:"
+echo "#"
+echo "#     pip install kfp"
+echo "#     python fsi-fraud-pipeline.py"
+echo "#"
+echo "#   → This generates: fsi-fraud-pipeline.yaml (the IR YAML)"
+echo "#   → You should see: 'Pipeline compiled to: fsi-fraud-pipeline.yaml'"
+echo "#"
+echo "#   💡 The Python code defines the pipeline declaratively."
+echo "#     The compiler serializes it to IR YAML -- the portable format"
+echo "#     that any KFP v2 backend can execute."
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo "# 🔧 Step 3: Import and run the 4-step pipeline"
+
+wait
+
+pe "$BROWSER_OPEN \$RHOAI_URL"
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Import pipeline in RHOAI Dashboard${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 RHOAI Dashboard → fsi-demo project → 'Pipelines' tab"
+echo "#   → Click 'Import pipeline'"
+echo "#   → Pipeline name: FSI Fraud Detection Training"
+echo "#   → Upload: fsi-fraud-pipeline.yaml (the IR YAML from workbench)"
+echo "#     (download from JupyterLab or copy/paste)"
+echo "#   → Click 'Import pipeline'"
+echo "#"
+echo "# 🏃 Then create a run:"
+echo "#   → Click the pipeline name → 'Create run'"
+echo "#   → Run name: fraud-training-run-1"
+echo "#   → Experiment: Create new → 'fsi-fraud-experiments'"
+echo "#   → Parameters: num_samples = 10000 (default)"
+echo "#   → Click 'Create'"
+echo "#"
+echo "# 👀 Watch the pipeline execute:"
+echo "#   → Each step lights up as it runs"
+echo "#   → Click a step to see its logs"
+echo "#   → 4 steps run in sequence:"
+echo "#     data-processing → feature-extract → train-model → upload-model"
+echo "#"
+echo "# 💡 Notice: there's no validation step yet!"
+echo "#   We'll add that next using the Elyra visual editor."
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo "# 🎨 Step 4: Add Validate step with Elyra"
+echo "#   • Elyra = visual pipeline editor in JupyterLab"
+echo "#   • Drag-and-drop nodes instead of writing Python"
+echo "#   • Each node = a notebook or Python script"
+echo "#   • Two ways to build pipelines:"
+echo "#     Code-first: KFP SDK (what we just did)"
+echo "#     Visual: Elyra (what we're doing now)"
+
+wait
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Add Validate step in Elyra${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 In JupyterLab (same workbench):"
+echo "#   → File menu → New → Pipeline Editor"
+echo "#   → This opens the Elyra visual pipeline canvas"
+echo "#"
+echo "# 🧩 Add the validate step:"
+echo "#   → From the file browser, drag validate-model.ipynb"
+echo "#     onto the pipeline canvas"
+echo "#   → This creates a node for the validation script"
+echo "#   → Right-click the node → Properties to configure:"
+echo "#     • Runtime image: pick a Python image"
+echo "#     • Dependencies: numpy, scikit-learn"
+echo "#"
+echo "# 💡 Elyra lets data scientists build pipelines"
+echo "#   without writing KFP SDK code. Each node is a"
+echo "#   notebook or script -- drag, drop, connect, run."
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo "# 📊 Step 5: Experiments & Tracking"
+echo "#   • Pipeline runs can be used as experiments"
+echo "#   • The run view tracks those experiments"
+echo "#   • Compare results across runs, reproduce any previous run"
+
+wait
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Explore Experiments${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 RHOAI Dashboard → fsi-demo project → 'Experiments' tab"
+echo "#   → Click 'fsi-fraud-experiments'"
+echo "#   → Shows all runs in this experiment"
+echo "#   → Click a completed run to see:"
+echo "#     • DAG visualization (pipeline graph)"
+echo "#     • Per-step logs (training accuracy, AUC score)"
+echo "#     • Input/output artifacts"
+echo "#     • Run parameters and duration"
+echo "#"
+echo "# 💡 In production:"
+echo "#   • Run the pipeline on new data → automatic retraining"
+echo "#   • Compare AUC scores across experiments"
+echo "#   • Promote best model to Model Registry → Deploy"
+echo "#   • Schedule pipelines to run on a cadence"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo "# ✅ Pipeline deployed, run complete, experiment tracked"
+echo "#   Manual workflow (Sections 8-11) is now automated"
 
 wait
 }

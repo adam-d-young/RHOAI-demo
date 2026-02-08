@@ -41,6 +41,7 @@ RHOAI-demo/
 ├── setup.sh                               # Pre-demo cluster setup (GPU, MinIO, MySQL)
 ├── demo.sh                                # Live demo script (13 sections, skip support)
 ├── manifests/
+│   ├── dspa.yaml                          # Pipeline server (DSPA) + S3 credentials
 │   ├── gpu-cluster-policy.yaml            # NVIDIA ClusterPolicy reference
 │   ├── hardware-profile.yaml              # GPU toleration + resource identifiers
 │   ├── minio.yaml                         # MinIO S3 storage
@@ -52,6 +53,8 @@ RHOAI-demo/
     ├── gpu-check.py                       # Verify TensorFlow sees the GPU
     ├── gpu-demo.py                        # GPU matrix multiply benchmark
     ├── train-and-upload.py                # Train model + upload to MinIO
+    ├── fsi-fraud-pipeline.py              # KFP v2 pipeline (compiles to IR YAML)
+    ├── validate-model.ipynb               # Validate step (added via Elyra)
     └── inference-test.ipynb               # Send predictions to deployed model
 ```
 
@@ -102,3 +105,4 @@ Each section can be skipped individually. Dependency checks warn if a previous s
 - **Triton Inference Server**: Serves TensorFlow SavedModel on GPU with auto-detected tensor names.
 - **Model Registry workflow**: Train -> register in registry with metadata -> deploy from registry. Full lineage tracking.
 - **MinIO for S3**: Stands in for production S3/Ceph/ODF. Bucket creation is done live during the demo.
+- **Pipelines**: KFP v2 SDK compiles to IR YAML (Intermediate Representation). RHOAI 3.0 uses Argo Workflows backend. The pipeline is intentionally 4 steps; the validate step is added live using Elyra to show both code-first and visual pipeline building.
