@@ -1,0 +1,60 @@
+# OpenShift Template wrapping the Triton ServingRuntime.
+# In RHOAI 3.0, the Dashboard discovers serving runtimes via Templates
+# in redhat-ods-applications, NOT bare ServingRuntime CRs.
+# Use this for CLI: oc apply -f manifests/serving-runtime-template.yaml
+# Use serving-runtime.yaml for GUI paste (Dashboard wraps it for you).
+apiVersion: template.openshift.io/v1
+kind: Template
+metadata:
+  name: triton-kserve-gpu-template
+  namespace: redhat-ods-applications
+  annotations:
+    description: "NVIDIA Triton Inference Server for KServe (GPU)"
+    opendatahub.io/apiProtocol: REST
+    opendatahub.io/model-type: '["predictive"]'
+    opendatahub.io/modelServingSupport: '["single"]'
+    openshift.io/display-name: "Triton Inference Server (GPU)"
+    tags: kserve,servingruntime
+  labels:
+    opendatahub.io/dashboard: "true"
+objects:
+- apiVersion: serving.kserve.io/v1alpha1
+  kind: ServingRuntime
+  metadata:
+    name: triton-kserve-gpu
+    annotations:
+      opendatahub.io/recommended-accelerators: '["nvidia.com/gpu"]'
+      opendatahub.io/runtime-version: "24.01"
+      openshift.io/display-name: "Triton Inference Server (GPU)"
+    labels:
+      opendatahub.io/dashboard: "true"
+  spec:
+    multiModel: false
+    supportedModelFormats:
+      - name: keras
+        version: "3"
+      - name: tensorflow
+        version: "2"
+      - name: onnx
+        version: "1"
+    containers:
+      - name: kserve-container
+        image: nvcr.io/nvidia/tritonserver:24.01-py3
+        args:
+          - "tritonserver"
+          - "--model-store=/mnt/models"
+          - "--http-port=8080"
+          - "--allow-grpc=false"
+          - "--allow-http=true"
+          - "--model-control-mode=explicit"
+        ports:
+          - containerPort: 8080
+            name: http1
+            protocol: TCP
+        resources:
+          requests:
+            cpu: "1"
+            memory: "4Gi"
+          limits:
+            cpu: "2"
+            memory: "8Gi"

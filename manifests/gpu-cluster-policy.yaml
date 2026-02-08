@@ -1,41 +1,45 @@
-# ClusterPolicy - Configures the NVIDIA GPU Operator behavior
-# This tells the operator what GPU software stack components to deploy:
-#   - driver:        Compiles & installs NVIDIA kernel modules on GPU nodes
-#   - devicePlugin:  Exposes nvidia.com/gpu resources to the Kubernetes scheduler
-#   - dcgm/exporter: Data Center GPU Manager for monitoring & metrics
-#   - toolkit:       Container runtime hooks so pods can access GPUs
-#   - gfd:           GPU Feature Discovery - labels nodes with GPU properties
+# ClusterPolicy - The single CR that drives the entire NVIDIA GPU Operator.
+# Every component below is a DaemonSet that runs on GPU nodes.
 apiVersion: nvidia.com/v1
 kind: ClusterPolicy
 metadata:
   name: gpu-cluster-policy
 spec:
   operator:
-    defaultRuntime: crio            # OpenShift uses CRI-O
+    defaultRuntime: crio            # OpenShift uses CRI-O (not Docker)
     runtimeClass: nvidia
-  dcgm:
-    enabled: true                   # GPU metrics collection
-  gfd:
-    enabled: true                   # GPU feature labels on nodes
-  dcgmExporter:
-    enabled: true                   # Prometheus metrics exporter
-  driver:
-    enabled: true                   # Install NVIDIA drivers on GPU nodes
+
+  driver:                           # Kernel modules -- lets the OS talk to the GPU
+    enabled: true
     kernelModuleType: auto
-  devicePlugin:
-    enabled: true                   # Expose nvidia.com/gpu to K8s scheduler
+
+  toolkit:                          # Injects GPU device files into containers
+    enabled: true
+    installDir: /usr/local/nvidia
+
+  devicePlugin:                     # Registers nvidia.com/gpu as a schedulable resource
+    enabled: true
+
+  gfd:                              # Labels nodes with GPU product, VRAM, CUDA version
+    enabled: true
+
+  dcgm:                             # GPU health monitoring (temp, ECC errors, power)
+    enabled: true
+
+  dcgmExporter:                     # Exposes GPU metrics to Prometheus
+    enabled: true
+
   nodeStatusExporter:
     enabled: true
+
   daemonsets:
     rollingUpdate:
       maxUnavailable: 10%
     tolerations:
-      - key: nvidia.com/gpu         # Allow GPU operator pods on tainted GPU nodes
+      - key: nvidia.com/gpu         # Must tolerate GPU taint to run on GPU nodes
         operator: Exists
     updateStrategy: RollingUpdate
+
   sandboxWorkloads:
     defaultWorkload: container
     enabled: false
-  toolkit:
-    enabled: true                   # NVIDIA container toolkit
-    installDir: /usr/local/nvidia

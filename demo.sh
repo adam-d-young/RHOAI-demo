@@ -16,8 +16,85 @@
 
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Preflight: check required tools
+MISSING=""
+for tool in oc bat; do
+  if ! command -v "$tool" &>/dev/null; then
+    MISSING="$MISSING $tool"
+  fi
+done
+if ! oc whoami &>/dev/null; then
+  MISSING="$MISSING oc(not-logged-in)"
+fi
+if [ -n "$MISSING" ]; then
+  echo "ERROR: Missing required tools:$MISSING"
+  echo ""
+  echo "  oc   → brew install openshift-cli (or download from OpenShift console)"
+  echo "  bat  → brew install bat"
+  echo "  oc login → oc login <cluster-url>"
+  exit 1
+fi
+
 # Source demo-magic
 . "${DEMO_DIR}/demo-magic.sh" -n
+
+# Helper: verify a condition before continuing, retry on failure
+# Usage: verify_step "description" "command that returns 0 on success"
+verify_step() {
+  local desc="$1"
+  local cmd="$2"
+  while true; do
+    if eval "$cmd" &>/dev/null; then
+      echo -e "  ${GREEN}✅ ${desc}${COLOR_RESET}"
+      return 0
+    else
+      echo -e "  ${RED}❌ ${desc} -- not ready${COLOR_RESET}"
+      echo ""
+      read -p "  Press ENTER to retry, or 's' to skip: " choice
+      if [ "$choice" = "s" ]; then
+        echo -e "  ${CYAN}⏭️  Skipped${COLOR_RESET}"
+        return 1
+      fi
+    fi
+  done
+}
+
+# Helper: compare live resource against manifest, show diff if mismatched
+# Usage: verify_manifest "description" "manifest-file"
+verify_manifest() {
+  local desc="$1"
+  local manifest="$2"
+  while true; do
+    local diff_output
+    diff_output=$(oc diff -f "${DEMO_DIR}/${manifest}" 2>&1)
+    local rc=$?
+    if [ $rc -eq 0 ]; then
+      echo -e "  ${GREEN}✅ ${desc} -- matches manifest${COLOR_RESET}"
+      return 0
+    elif [ $rc -eq 1 ]; then
+      echo -e "  ${CYAN}⚠️  ${desc} -- differs from manifest:${COLOR_RESET}"
+      echo ""
+      echo "$diff_output"
+      echo ""
+      read -p "  (a)pply manifest to fix / (c)ontinue anyway / (r)etry check: " choice
+      case "$choice" in
+        a) oc apply -f "${DEMO_DIR}/${manifest}" &>/dev/null
+           echo -e "  ${GREEN}  Applied.${COLOR_RESET}"
+           continue ;;
+        c) return 0 ;;
+        *) continue ;;
+      esac
+    else
+      echo -e "  ${RED}❌ ${desc} -- not found or error${COLOR_RESET}"
+      echo ""
+      read -p "  Press ENTER to retry, or 's' to skip: " choice
+      if [ "$choice" = "s" ]; then
+        echo -e "  ${CYAN}⏭️  Skipped${COLOR_RESET}"
+        return 1
+      fi
+    fi
+  done
+}
 
 # Configure
 DEMO_PROMPT="${GREEN}➜ ${CYAN}\W ${COLOR_RESET}"
@@ -35,11 +112,11 @@ fi
 clear
 
 echo ""
-echo -e "${GREEN}   ___                   ___  _     _  __ _       _    ___ ${COLOR_RESET}"
-echo -e "${GREEN}  / _ \ _ __  ___ _ _  / __|| |_  (_)/ _| |_   / \\  |_ _|${COLOR_RESET}"
-echo -e "${GREEN} | (_) | '_ \/ -_) ' \ \__ \| ' \ | |  _|  _| | - |  | | ${COLOR_RESET}"
-echo -e "${GREEN}  \___/| .__/\___|_||_||___/|_||_||_|_|  \__| |_|_| |___|${COLOR_RESET}"
-echo -e "${GREEN}       |_|${COLOR_RESET}          ${CYAN}Get Started with OpenShift AI${COLOR_RESET}"
+echo -e "${GREEN}  ___                 ___ _    _  __ _       _   ___ ${COLOR_RESET}"
+echo -e "${GREEN} / _ \ _ __  ___ _ _ / __| |_ (_)/ _| |_    /_\ |_ _|${COLOR_RESET}"
+echo -e "${GREEN}| (_) | '_ \/ -_) ' \\\\__ \ ' \| |  _|  _|  / _ \ | | ${COLOR_RESET}"
+echo -e "${GREEN} \___/| .__/\___|_||_|___/_||_|_|_|  \__| /_/ \_\___|${COLOR_RESET}"
+echo -e "${GREEN}      |_|${COLOR_RESET}         ${CYAN}Get Started with OpenShift AI${COLOR_RESET}"
 echo ""
 echo -e "  ${CYAN}FSI Bootcamp Demo  •  GPU-Accelerated ML on OpenShift${COLOR_RESET}"
 echo ""
@@ -69,6 +146,8 @@ echo "# 🖥️  GPU nodes online?"
 wait
 
 pe "oc get nodes -l nvidia.com/gpu.present=true"
+
+pe "oc get nodes -l nvidia.com/gpu.present=true -o custom-columns='NODE:.metadata.name,TAINT:.spec.taints[*].key,EFFECT:.spec.taints[*].effect'"
 
 echo ""
 echo "# 🚫 These GPU nodes are tainted: nvidia.com/gpu=NoSchedule"
@@ -107,7 +186,7 @@ echo "#     • system-os_release.ID   → RHCOS / RHEL"
 
 wait
 
-pe "oc get nodes -l nvidia.com/gpu.present=true -o json | jq '.items[0].metadata.labels | with_entries(select(.key | (startswith(\"feature.node.kubernetes.io\") and test(\"pci|kernel|os_release|cpu-model\"))))'"
+pe "oc describe node \$(oc get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[0].metadata.name}') | grep -E 'pci-10de|kernel-version.full|os_release.ID|cpu-model.vendor'"
 
 wait
 
@@ -133,7 +212,7 @@ echo "# 📋 What does the ClusterPolicy configure?"
 
 wait
 
-pe "less ${DEMO_DIR}/manifests/gpu-cluster-policy.yaml"
+pe "bat --style=grid,numbers manifests/gpu-cluster-policy.yaml"
 
 echo ""
 echo ""
@@ -211,19 +290,26 @@ wait
 pe "oc get csv -A | grep rhods"
 
 echo ""
-echo "# 📋 The operator auto-creates a default DataScienceCluster"
-echo "#   • RHOAI 3.x defaults enable everything we need:"
-echo "#     Dashboard, Workbenches, ModelMeshServing, ModelRegistry"
-echo "#   • No changes needed -- let's verify:"
+echo "# 🔄 Checking RHOAI readiness..."
+verify_step "RHOAI operator CSV is Succeeded" "oc get csv -A 2>/dev/null | grep rhods | grep -q Succeeded"
+verify_step "DataScienceCluster exists" "oc get datasciencecluster default-dsc 2>/dev/null"
+verify_step "DataScienceCluster phase is Ready" "oc get datasciencecluster default-dsc -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Ready"
+verify_step "Dashboard is ready" "oc get datasciencecluster default-dsc -o jsonpath='{.status.conditions[?(@.type==\"DashboardReady\")].status}' 2>/dev/null | grep -q True"
+verify_step "KServe is ready" "oc get datasciencecluster default-dsc -o jsonpath='{.status.conditions[?(@.type==\"KserveReady\")].status}' 2>/dev/null | grep -q True"
+verify_step "Workbenches ready" "oc get datasciencecluster default-dsc -o jsonpath='{.status.conditions[?(@.type==\"WorkbenchesReady\")].status}' 2>/dev/null | grep -q True"
+verify_step "RHOAI Dashboard gateway exists" "oc get gateway data-science-gateway -n openshift-ingress 2>/dev/null"
+
+pe "RHOAI_URL=https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}') && echo \$RHOAI_URL"
+
+echo ""
+echo "# 📋 What's managed vs removed:"
 
 wait
 
-pe "oc get datasciencecluster"
-
-pe "oc get datasciencecluster default-dsc -o jsonpath='{.spec.components}' | jq ."
+pe "oc get datasciencecluster -o yaml | grep -A1 managementState"
 
 echo ""
-echo "# ✅ RHOAI is ready -- all components managed by the operator"
+echo "# ✅ RHOAI 3.0 is ready -- all components healthy"
 
 wait
 
@@ -238,18 +324,58 @@ echo -e "# ${GREEN}════════════════════�
 echo "#"
 echo "# 🔑 Remember the GPU taint from Section 1?"
 echo "#   • HardwareProfile is how RHOAI workloads get past it"
-echo "#   1. Requests nvidia.com/gpu: 1"
-echo "#   2. Tolerates the taint → workbench pods CAN schedule"
+echo "#   • Defines: CPU + Memory + GPU requests"
+echo "#   • Includes toleration so pods CAN schedule on tainted GPU nodes"
 
 wait
 
-pe "less ${DEMO_DIR}/manifests/hardware-profile.yaml"
-
-pe "oc apply -f ${DEMO_DIR}/manifests/hardware-profile.yaml"
+echo ""
+echo "# 📋 Here's what the HardwareProfile looks like:"
 
 wait
 
-pe "RHOAI_URL=\$(oc get route rhods-dashboard -n redhat-ods-applications -o jsonpath='https://{.spec.host}') && echo \$RHOAI_URL"
+pe "bat --style=grid,numbers manifests/hardware-profile.yaml"
+
+echo ""
+echo "# 🔧 Two ways to create this profile:"
+echo "#"
+echo "#   Option A: Apply the manifest (oc apply)"
+echo "#   Option B: Create it manually in the RHOAI Dashboard"
+echo "#     → Settings → Hardware profiles → 'Create hardware profile'"
+echo "#     → Name: nvidia-gpu"
+echo "#     → Add identifiers: CPU (2 default), Memory (8Gi), nvidia.com/gpu (1)"
+echo "#     → Add toleration: key=nvidia.com/gpu, effect=NoSchedule, operator=Exists"
+echo ""
+read -p "  Apply manifest now? (y/n): " HP_CHOICE
+if [ "$HP_CHOICE" = "y" ]; then
+  pe "oc apply -f manifests/hardware-profile.yaml"
+else
+  echo ""
+  echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+  echo -e "# ${RED}   ACTION REQUIRED -- Create HardwareProfile in RHOAI Dashboard${COLOR_RESET}"
+  echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+  echo "#"
+  echo "# 🌐 RHOAI Dashboard → Settings → Hardware profiles"
+  echo "#   → Click 'Create hardware profile'"
+  echo "#   → Name: nvidia-gpu"
+  echo "#   → Add identifiers:"
+  echo "#     • CPU:            default=2, min=1, max=8"
+  echo "#     • Memory:         default=8Gi, min=2Gi, max=32Gi"
+  echo "#     • nvidia.com/gpu: default=1, min=1, max=2 (type: Accelerator)"
+  echo "#   → Node scheduling → Add toleration:"
+  echo "#     • Key: nvidia.com/gpu"
+  echo "#     • Effect: NoSchedule"
+  echo "#     • Operator: Exists"
+  echo "#   → Click 'Create'"
+  echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+  wait
+fi
+
+echo ""
+verify_step "HardwareProfile 'nvidia-gpu' exists" "oc get hardwareprofile nvidia-gpu -n redhat-ods-applications 2>/dev/null"
+verify_manifest "HardwareProfile config" "manifests/hardware-profile.yaml"
+
+wait
 
 pe "$BROWSER_OPEN \$RHOAI_URL"
 
@@ -258,11 +384,12 @@ echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━�
 echo -e "# ${RED}   ACTION REQUIRED -- Verify HardwareProfile in browser${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 🌐 RHOAI Dashboard:"
-echo "#   → Settings (left sidebar) → Hardware profiles"
-echo "#   → 'nvidia-gpu' profile should appear"
+echo "# 🌐 RHOAI Dashboard → Settings → Hardware profiles"
+echo "#   → 'NVIDIA GPU (A10G)' should appear"
 echo "#   → Click it to verify:"
-echo "#     • Resource: nvidia.com/gpu: 1"
+echo "#     • CPU: 2 (1-8)"
+echo "#     • Memory: 8Gi (2Gi-32Gi)"
+echo "#     • nvidia.com/gpu: 1 (1-2)"
 echo "#     • Toleration: nvidia.com/gpu NoSchedule"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
@@ -299,10 +426,16 @@ pe "oc get pods -l app=minio"
 pe "oc get pods -n rhoai-model-registry"
 
 echo ""
+verify_step "MinIO pod is Running" "oc get pods -l app=minio -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+verify_step "Model Registry DB pod is Running" "oc get pods -n rhoai-model-registry -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+
+echo ""
 echo "# 🪣 Time to create our model storage bucket in MinIO!"
 echo "#   → This is where trained models land before serving"
 
 wait
+
+verify_step "MinIO UI route exists" "oc get route minio-ui 2>/dev/null"
 
 pe "MINIO_URL=\$(oc get route minio-ui -o jsonpath='https://{.spec.host}') && echo \$MINIO_URL"
 
@@ -334,14 +467,62 @@ echo -e "# ${GREEN}SECTION 7: GPU Serving Runtime${COLOR_RESET}"
 echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
 echo "#"
 echo "# 🖥️  ServingRuntime = how models get served on GPUs"
-echo "#   • Using NVIDIA Triton Inference Server"
+echo "#   • Using NVIDIA Triton Inference Server (v24.01)"
 echo "#   • Supports TensorFlow, Keras, ONNX out of the box"
+echo "#   • Tells KServe: container image, ports, supported formats"
+echo "#"
+echo "# 📦 RHOAI 3.0 stores runtimes as OpenShift Templates"
+echo "#   • Dashboard discovers them in redhat-ods-applications"
+echo "#   • Template wraps a bare ServingRuntime + metadata:"
+echo "#     - API protocol (REST vs gRPC)"
+echo "#     - Model type (predictive vs generative AI)"
+echo "#   • GUI does this wrapping for you when you paste YAML"
 
 wait
 
-pe "less ${DEMO_DIR}/manifests/serving-runtime.yaml"
+echo ""
+echo "# 📋 Here's the ServingRuntime definition:"
 
-pe "oc apply -f ${DEMO_DIR}/manifests/serving-runtime.yaml"
+wait
+
+pe "bat --style=grid,numbers manifests/serving-runtime.yaml"
+
+echo ""
+echo "# 🔧 Two ways to create this runtime:"
+echo "#"
+echo "#   Option A: Apply the Template manifest (oc apply)"
+echo "#     → Applies the pre-wrapped Template directly"
+echo "#"
+echo "#   Option B: Paste bare YAML in the RHOAI Dashboard"
+echo "#     → Dashboard asks for protocol + model type, wraps it for you"
+echo ""
+read -p "  Apply template manifest now? (y/n): " SR_CHOICE
+if [ "$SR_CHOICE" = "y" ]; then
+  pe "oc apply -f manifests/serving-runtime-template.yaml"
+else
+  echo ""
+  echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+  echo -e "# ${RED}   ACTION REQUIRED -- Create ServingRuntime in RHOAI Dashboard${COLOR_RESET}"
+  echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+  echo "#"
+  echo "# 📁 YAML to paste: manifests/serving-runtime.yaml"
+  echo "#    (scroll up or open in another terminal)"
+  echo "#"
+  echo "# 🌐 RHOAI Dashboard → Settings → Serving runtimes"
+  echo "#   → Click 'Add serving runtime'"
+  echo "#   → API protocol: REST"
+  echo "#     (Triton config uses HTTP only -- --allow-grpc=false)"
+  echo "#   → Model type: Predictive model"
+  echo "#     (traditional ML: TensorFlow/Keras/ONNX, not LLM inference)"
+  echo "#   → Select 'Start from scratch'"
+  echo "#   → Paste the full YAML from manifests/serving-runtime.yaml"
+  echo "#   → Click 'Create'"
+  echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+  wait
+fi
+
+echo ""
+verify_step "ServingRuntime template exists" "oc get template triton-kserve-gpu-template -n redhat-ods-applications 2>/dev/null"
 
 echo ""
 echo "# ✅ 'Triton Inference Server (GPU)' now available in RHOAI Dashboard!"
@@ -365,8 +546,6 @@ echo "#   4️⃣  Train + upload model"
 echo "#   5️⃣  Deploy for inference"
 
 wait
-
-pe "RHOAI_URL=\$(oc get route rhods-dashboard -n redhat-ods-applications -o jsonpath='https://{.spec.host}') && echo \$RHOAI_URL"
 
 pe "$BROWSER_OPEN \$RHOAI_URL"
 
@@ -428,7 +607,9 @@ echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━�
 echo -e "# ${RED}   ACTION REQUIRED -- Run notebooks in JupyterLab${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 4️⃣  Upload notebooks from this repo's notebooks/ folder"
+echo "# 4️⃣  In JupyterLab terminal, clone the repo:"
+echo "#   → git clone https://github.com/adam-d-young/RHOAI-demo.git"
+echo "#   → Navigate to RHOAI-demo/notebooks/"
 echo "#   → Run in order:"
 echo "#"
 echo "#   📓 gpu-check.py        → Can TensorFlow see the A10G?"
@@ -465,7 +646,7 @@ echo "#"
 echo "# 6️⃣  🌐 RHOAI Dashboard → fsi-demo project"
 echo "#   → 'Models' tab → Click 'Deploy model'"
 echo "#   → Model name:      fsi-demo-model"
-echo "#   → Serving runtime:  Triton Inference Server (GPU)"
+echo "#   → Serving runtime:  'Triton Inference Server (GPU)'"
 echo "#   → Model framework:  tensorflow"
 echo "#   → Model location:   Existing data connection → minio-models"
 echo "#   → Path: (the path from MinIO, e.g. 'model/')"

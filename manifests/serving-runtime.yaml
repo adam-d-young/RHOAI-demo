@@ -1,19 +1,19 @@
-# ServingRuntime - Makes Triton Inference Server available in RHOAI Dashboard
-# This defines a model server that can serve TensorFlow, Keras, and ONNX models.
-# GPU is NOT hardcoded here -- you select it via the hardware profile
-# when creating the inference service in the RHOAI UI.
+# Bare ServingRuntime YAML -- paste this in the RHOAI Dashboard GUI
+# when adding a custom serving runtime via Settings → Serving runtimes.
+# The Dashboard wraps it in a Template and adds the metadata you select
+# (API protocol, model type) as annotations.
 apiVersion: serving.kserve.io/v1alpha1
 kind: ServingRuntime
 metadata:
   name: triton-kserve-gpu
   annotations:
-    opendatahub.io/template-display-name: "Triton Inference Server (GPU)"
-    opendatahub.io/template-name: "triton-kserve-gpu"
-    opendatahub.io/accelerator-selector: "nvidia.com/gpu"
+    opendatahub.io/recommended-accelerators: '["nvidia.com/gpu"]'
+    opendatahub.io/runtime-version: "24.01"
+    openshift.io/display-name: "Triton Inference Server (GPU)"
   labels:
-    opendatahub.io/dashboard: "true"  # Makes it visible in the RHOAI dropdown
+    opendatahub.io/dashboard: "true"
 spec:
-  multiModel: false                   # Single model per server instance
+  multiModel: false
   supportedModelFormats:
     - name: keras
       version: "3"
@@ -26,7 +26,7 @@ spec:
       image: nvcr.io/nvidia/tritonserver:24.01-py3
       args:
         - "tritonserver"
-        - "--model-store=/mnt/models"   # KServe mounts the model here
+        - "--model-store=/mnt/models"
         - "--http-port=8080"
         - "--allow-grpc=false"
         - "--allow-http=true"

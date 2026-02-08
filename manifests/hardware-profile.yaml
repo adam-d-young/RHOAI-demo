@@ -2,19 +2,37 @@
 # Key concept: GPU nodes have a taint (nvidia.com/gpu) that prevents
 # non-GPU workloads from landing on them. This profile includes the
 # matching toleration so RHOAI workbenches CAN schedule on GPU nodes.
-apiVersion: infrastructure.opendatahub.io/v1alpha1
+apiVersion: infrastructure.opendatahub.io/v1
 kind: HardwareProfile
 metadata:
   name: nvidia-gpu
-  namespace: redhat-ods-operator
+  namespace: redhat-ods-applications
+  labels:
+    app.opendatahub.io/hardwareprofile: "true"
+  annotations:
+    opendatahub.io/display-name: "NVIDIA GPU (A10G)"
+    opendatahub.io/description: "1x NVIDIA GPU with 2 CPUs, 8Gi memory, and GPU node toleration"
+    opendatahub.io/disabled: "false"
 spec:
   identifiers:
-    - defaultCount: 1               # Default 1 GPU per workbench
+    - identifier: cpu
+      displayName: CPU
+      resourceType: CPU
+      defaultCount: "2"
+      minCount: "1"
+      maxCount: "8"
+    - identifier: memory
+      displayName: Memory
+      resourceType: Memory
+      defaultCount: 8Gi
+      minCount: 2Gi
+      maxCount: 32Gi
+    - identifier: nvidia.com/gpu
       displayName: NVIDIA GPU
-      identifier: nvidia.com/gpu    # K8s resource name exposed by device plugin
-      maxCount: 2
-      minCount: 1
       resourceType: Accelerator
+      defaultCount: 1
+      minCount: 1
+      maxCount: 2
   scheduling:
     node:
       tolerations:
