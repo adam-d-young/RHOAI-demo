@@ -497,6 +497,8 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 
 wait
 
+verify_step "granite-demo namespace exists" "oc get namespace granite-demo 2>/dev/null"
+
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo -e "# ${RED}   ACTION REQUIRED -- Deploy Granite from Model Catalog${COLOR_RESET}"
@@ -701,9 +703,18 @@ echo "#"
 echo "# 💬 LlamaStack = unified API for LLM inference"
 echo "#   • Open-source project by Meta, supported by Red Hat"
 echo "#   • Provides a standard API for chat, completions, embeddings"
-echo "#   • The operator was enabled in the DSC back in Section 4"
-echo "#   • Now we deploy an INSTANCE pointing at our Granite model"
-echo "#   • Plus a Playground UI for interactive chat"
+echo "#"
+echo "# 🧩 How LlamaStack gets deployed (3 layers):"
+echo "#   1. DSC (Section 4): set llamastackoperator → Managed"
+echo "#      → RHOAI installs the LlamaStack OPERATOR"
+echo "#   2. Helm chart: llama-stack-operator-instance"
+echo "#      → Creates a LlamaStackDistribution CR"
+echo "#      → Operator sees the CR and deploys the API server"
+echo "#   3. Helm chart: llama-stack-playground"
+echo "#      → Deploys a Streamlit chat UI that talks to the API"
+echo "#"
+echo "# 📦 Both Helm charts come from the GenAIOps repo"
+echo "#   (registered in OpenShift during setup.sh)"
 
 wait
 
@@ -736,31 +747,43 @@ echo "#   Model ID: ${GRANITE_MODEL_ID}"
 wait
 
 echo ""
-echo "# 🔧 Step 1: Deploy LlamaStack operator instance"
-echo "#   • Creates a LlamaStackDistribution CR"
-echo "#   • The RHOAI-managed operator sees this CR and deploys:"
-echo "#     - LlamaStack API server (port 8321)"
-echo "#     - ConfigMap with model routing config"
-echo "#   • Uses a Helm chart from the GenAIOps Helm repo"
+echo "# 🔧 Step 1: Install LlamaStack operator instance"
+echo "#   • Creates a LlamaStackDistribution CR in granite-demo"
+echo "#   • The operator (installed by the DSC) watches for this CR"
+echo "#   • Deploys a LlamaStack API server (port 8321)"
+echo "#   • We install via the Helm chart in the OpenShift console"
 
 wait
 
 echo ""
-echo "# 📋 Installing LlamaStack operator instance via Helm..."
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Install LlamaStack instance (Helm)${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 OpenShift Console → Developer perspective"
+echo "#   → Select project: granite-demo"
+echo "#   → '+Add' (left sidebar) → Helm Chart"
+echo "#   → Search: 'llama-stack-operator-instance'"
+echo "#   → Click it → Click 'Install Helm Chart'"
+echo "#   → Switch to YAML view and update:"
+echo "#"
+echo "#   models:"
+echo "#     - name: ${GRANITE_MODEL_ID}"
+echo "#       url: ${GRANITE_ENDPOINT}"
+echo "#"
+echo "#   Set these to false (not needed for demo):"
+echo "#     telemetry.enabled: false"
+echo "#     otelCollector.enabled: false"
+echo "#     rag.enabled: false"
+echo "#     mcp.enabled: false"
+echo "#     mcp_aihub.enabled: false"
+echo "#     eval.enabled: false"
+echo "#     guardrails.enabled: false"
+echo "#"
+echo "#   → Click 'Install'"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
 wait
-
-pe "helm install llama-stack-instance genaiops/llama-stack-operator-instance \
-  --namespace granite-demo \
-  --set models[0].name=${GRANITE_MODEL_ID} \
-  --set models[0].url=${GRANITE_ENDPOINT} \
-  --set telemetry.enabled=false \
-  --set otelCollector.enabled=false \
-  --set rag.enabled=false \
-  --set mcp.enabled=false \
-  --set mcp_aihub.enabled=false \
-  --set eval.enabled=false \
-  --set guardrails.enabled=false"
 
 echo ""
 echo "# ⏳ Waiting for LlamaStack API server to start..."
@@ -770,19 +793,34 @@ wait
 verify_step "LlamaStack pod is Running" "oc get pods -n granite-demo -l app.kubernetes.io/name=llama-stack -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
 
 echo ""
-echo "# 🔧 Step 2: Deploy LlamaStack Playground UI"
+echo "# 🔧 Step 2: Install LlamaStack Playground UI"
 echo "#   • Streamlit-based chat interface"
 echo "#   • Connects to the LlamaStack API service"
-echo "#   • Creates an OpenShift Route for browser access"
 
 wait
 
-pe "helm install llama-stack-playground genaiops/llama-stack-playground \
-  --namespace granite-demo \
-  --set playground.llamaStackUrl=http://llama-stack:8321 \
-  --set playground.defaultModel=${GRANITE_MODEL_ID} \
-  --set route.enabled=true \
-  --set networkPolicy.enabled=false"
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Install LlamaStack Playground (Helm)${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 OpenShift Console → Developer → '+Add' → Helm Chart"
+echo "#   → Search: 'llama-stack-playground'"
+echo "#   → Click it → Click 'Install Helm Chart'"
+echo "#   → Switch to YAML view and update:"
+echo "#"
+echo "#   playground:"
+echo "#     llamaStackUrl: http://llama-stack:8321"
+echo "#     defaultModel: ${GRANITE_MODEL_ID}"
+echo "#   route:"
+echo "#     enabled: true"
+echo "#   networkPolicy:"
+echo "#     enabled: false"
+echo "#"
+echo "#   → Click 'Install'"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
 
 echo ""
 echo "# ⏳ Waiting for Playground to start..."
