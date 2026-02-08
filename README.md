@@ -28,12 +28,11 @@ your-workspace/
   RHOAI-demo/             # This repo
 ```
 
-LlamaStack Helm charts are installed from the published [GenAIOps Helm repo](https://rhoai-genaiops.github.io/genaiops-helmcharts/) -- no local clone needed. `setup.sh` registers this repo in OpenShift and adds it to the local Helm CLI.
+LlamaStack is deployed as bare Kubernetes resources (no operator or Helm charts) using `eformat` container images that are compatible with each other.
 
 ### Tools
 
 - `oc` CLI, logged into the target cluster
-- `helm` -- `brew install helm`
 - `bat` (syntax-highlighted file viewer) -- `brew install bat`
 
 ## Repo Structure
@@ -52,7 +51,9 @@ RHOAI-demo/
 │   ├── model-registry-db.yaml             # MySQL backend for Model Registry
 │   ├── model-registry-instance.yaml       # ModelRegistry CR instance
 │   ├── serving-runtime.yaml               # Triton ServingRuntime (bare YAML)
-│   └── serving-runtime-template.yaml      # Triton as OpenShift Template
+│   ├── serving-runtime-template.yaml      # Triton as OpenShift Template
+│   ├── llama-stack.yaml                   # LlamaStack server (bare deployment)
+│   └── llama-stack-playground.yaml        # LlamaStack Playground (Streamlit UI)
 └── notebooks/
     ├── gpu-check.py                       # Verify TensorFlow sees the GPU
     ├── gpu-demo.py                        # GPU matrix multiply benchmark
@@ -104,7 +105,7 @@ Full reset also removes MinIO, MySQL, GPU operators, and machinesets. Requires t
 | 1 | Check Current State (NFD, GPU, taints) | "The GPU foundation" | CLI |
 | 2 | Node Feature Discovery | | CLI |
 | 3 | NVIDIA GPU Operator (ClusterPolicy, nvidia-smi) | | CLI |
-| 4 | Install RHOAI (+ enable LlamaStack) | "The AI platform" | CLI + Browser |
+| 4 | Install RHOAI | "The AI platform" | CLI + Browser |
 | 5 | Hardware Profile (GPU toleration) | | CLI or Browser |
 | 6 | Model Catalog — Deploy Granite LLM | "Foundation models, one click" | Browser |
 | 7 | Serving Runtimes & Backing Services | "How models get served" | CLI + Browser |
@@ -124,4 +125,6 @@ Full reset also removes MinIO, MySQL, GPU operators, and machinesets. Requires t
 - **Model Registry workflow**: Train -> register in registry with metadata -> deploy from registry. Full lineage tracking.
 - **MinIO for S3**: Stands in for production S3/Ceph/ODF. Bucket creation is done live during the demo.
 - **Pipelines**: KFP v2 SDK compiles to IR YAML (Intermediate Representation). RHOAI 3.0 uses Argo Workflows backend. The pipeline is intentionally 4 steps; the validate step is added live using Elyra to show both code-first and visual pipeline building.
+- **LlamaStack**: Deployed as bare Deployments (not via operator or Helm). The operator's security context conflicts with the `eformat` images. Server (`distribution-remote-vllm:0.2.15`) and playground (`streamlit_client:0.2.15`) are from the same author, ensuring API compatibility.
+- **GPU management**: Granite LLM is scaled to zero in Section 11 to free the GPU for the custom fraud model deployment. Two A10G GPUs are shared across the demo.
 - **Pre-warming**: Optional setup.sh step caches serving runtime images on GPU nodes for faster demo deployments.

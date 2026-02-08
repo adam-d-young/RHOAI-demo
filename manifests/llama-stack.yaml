@@ -1,0 +1,72 @@
+# LlamaStack Distribution Server (bare deployment, no operator)
+# Requires ConfigMap "llama-stack-config" to be created first with run.yaml
+# containing the model endpoint and provider config.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-stack
+  labels:
+    app: llama-stack
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llama-stack
+  template:
+    metadata:
+      labels:
+        app: llama-stack
+    spec:
+      containers:
+        - name: llama-stack
+          image: quay.io/eformat/distribution-remote-vllm:0.2.15
+          ports:
+            - containerPort: 8321
+              name: http
+          command:
+            - llama
+            - stack
+            - run
+            - /config/run.yaml
+            - --port
+            - "8321"
+          env:
+            - name: SQLITE_STORE_DIR
+              value: /tmp/llama-data
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: data
+              mountPath: /tmp/llama-data
+            - name: llama-home
+              mountPath: /opt/app-root/src/.llama
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+      volumes:
+        - name: config
+          configMap:
+            name: llama-stack-config
+        - name: data
+          emptyDir: {}
+        - name: llama-home
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama-stack-service
+  labels:
+    app: llama-stack
+spec:
+  selector:
+    app: llama-stack
+  ports:
+    - port: 8321
+      targetPort: 8321
+      name: http

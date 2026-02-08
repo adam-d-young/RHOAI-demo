@@ -18,7 +18,7 @@ DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Preflight: check required tools
 MISSING=""
-for tool in oc bat helm; do
+for tool in oc bat; do
   if ! command -v "$tool" &>/dev/null; then
     MISSING="$MISSING $tool"
   fi
@@ -31,7 +31,6 @@ if [ -n "$MISSING" ]; then
   echo ""
   echo "  oc   → brew install openshift-cli (or download from OpenShift console)"
   echo "  bat  → brew install bat"
-  echo "  helm → brew install helm"
   echo "  oc login → oc login <cluster-url>"
   exit 1
 fi
@@ -274,7 +273,7 @@ echo "#"
 echo "# 🧠 RHOAI = the ML platform layer on top of OpenShift"
 echo "#   • Workbenches, model serving, pipelines, model registry"
 echo "#   • Model Catalog with pre-validated foundation models"
-echo "#   • LlamaStack for GenAI inference and chat"
+echo "#   • LlamaStack for GenAI inference and chat (deployed separately)"
 echo "#   • Install the operator from OperatorHub in the console"
 
 wait
@@ -319,7 +318,6 @@ echo "# 📋 DSC components we need:"
 echo "#   • Dashboard, Workbenches, ModelRegistry → Managed (defaults)"
 echo "#   • KServe → Managed (model serving)"
 echo "#   • DataSciencePipelines → Managed (ML pipelines)"
-echo "#   • LlamaStack → Managed (NOT default -- must enable)"
 echo "#   • ModelMeshServing → Removed (deprecated, KServe replaces it)"
 
 wait
@@ -331,13 +329,8 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 echo "#"
 echo "# 🌐 OpenShift Console → Installed Operators → Red Hat OpenShift AI"
 echo "#   → 'DataScienceCluster' tab → Click 'Create DataScienceCluster'"
-echo "#   → Switch to YAML view"
 echo "#"
-echo "# 📝 Find the llamastackoperator section and change it:"
-echo "#     llamastackoperator:"
-echo "#       managementState: Managed     ← change from Removed to Managed"
-echo "#"
-echo "# 💡 All other defaults are fine (Dashboard, KServe, Workbenches,"
+echo "# 💡 All defaults are fine (Dashboard, KServe, Workbenches,"
 echo "#   ModelRegistry, Pipelines are already Managed by default)"
 echo "#"
 echo "#   → Click 'Create'"
@@ -367,7 +360,7 @@ wait
 pe "oc get datasciencecluster -o yaml | grep -A1 managementState"
 
 echo ""
-echo "# ✅ RHOAI 3.0 is ready -- all components healthy, LlamaStack enabled"
+echo "# ✅ RHOAI 3.0 is ready -- all components healthy"
 
 wait
 }
@@ -697,24 +690,13 @@ wait
 
 section_8() {
 begin_section 8 "💬" "LlamaStack + Chat with Granite" || return 0
-# Depends on: RHOAI installed with LlamaStack (Section 4), Granite deployed (Section 6)
-ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+# Depends on: Granite deployed (Section 6)
 echo "#"
 echo "# 💬 LlamaStack = unified API for LLM inference"
 echo "#   • Open-source project by Meta, supported by Red Hat"
 echo "#   • Provides a standard API for chat, completions, embeddings"
-echo "#"
-echo "# 🧩 How LlamaStack gets deployed (3 layers):"
-echo "#   1. DSC (Section 4): set llamastackoperator → Managed"
-echo "#      → RHOAI installs the LlamaStack OPERATOR"
-echo "#   2. Helm chart: llama-stack-operator-instance"
-echo "#      → Creates a LlamaStackDistribution CR"
-echo "#      → Operator sees the CR and deploys the API server"
-echo "#   3. Helm chart: llama-stack-playground"
-echo "#      → Deploys a Streamlit chat UI that talks to the API"
-echo "#"
-echo "# 📦 Both Helm charts come from the GenAIOps repo"
-echo "#   (registered in OpenShift during setup.sh)"
+echo "#   • We're deploying it here to give Granite a chat interface"
+echo "#   • You'll work with LlamaStack in-depth in later labs"
 
 wait
 
@@ -742,104 +724,54 @@ GRANITE_ENDPOINT="http://${GRANITE_ISVC}-predictor.granite-demo.svc.cluster.loca
 GRANITE_MODEL_ID=$(oc exec -n granite-demo deploy/${GRANITE_ISVC}-predictor -c kserve-container -- curl -s http://localhost:8080/v1/models 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])" 2>/dev/null) || GRANITE_MODEL_ID="granite"
 
 echo ""
-echo "# ┌─────────────────────────────────────────────────────────────┐"
-echo "# │  Granite Internal Endpoint:                                 │"
-echo "# │  ${GRANITE_ENDPOINT}"
-echo "# │                                                             │"
-echo "# │  Model ID: ${GRANITE_MODEL_ID}"
-echo "# └─────────────────────────────────────────────────────────────┘"
-echo "#"
-echo "# 💡 These values are needed for LlamaStack config in the next step."
+echo "# ⏳ Deploying LlamaStack API server + Playground..."
+echo "#   (connecting to Granite at ${GRANITE_ENDPOINT})"
 
-wait
+# Create ConfigMap with LlamaStack run.yaml config pointing to Granite
+oc create configmap llama-stack-config -n granite-demo \
+  --from-literal=run.yaml="$(cat <<LLCFG
+version: '2'
+image_name: vllm
+metadata_store:
+  type: sqlite
+  db_path: /tmp/llama_stack_metadata.db
+apis:
+  - inference
+models:
+  - metadata: {}
+    model_id: ${GRANITE_MODEL_ID}
+    provider_id: vllm
+    provider_model_id: ${GRANITE_MODEL_ID}
+    model_type: llm
+providers:
+  inference:
+    - provider_id: vllm
+      provider_type: "remote::vllm"
+      config:
+        url: "${GRANITE_ENDPOINT}"
+        tls_verify: false
+server:
+  port: 8321
+LLCFG
+)" --dry-run=client -o yaml 2>/dev/null | oc apply -f - 2>/dev/null
 
-echo ""
-echo "# 🔧 Step 1: Install LlamaStack operator instance"
-echo "#   • Creates a LlamaStackDistribution CR in granite-demo"
-echo "#   • The operator (installed by the DSC) watches for this CR"
-echo "#   • Deploys a LlamaStack API server (port 8321)"
-echo "#   • We install via the Helm chart in the OpenShift console"
+# Deploy LlamaStack server + playground
+oc apply -f "${DEMO_DIR}/manifests/llama-stack.yaml" -n granite-demo 2>/dev/null
+oc apply -f "${DEMO_DIR}/manifests/llama-stack-playground.yaml" -n granite-demo 2>/dev/null
 
-wait
+# Set the correct model ID on the playground
+oc set env deployment/llama-stack-playground -n granite-demo \
+  DEFAULT_MODEL="${GRANITE_MODEL_ID}" 2>/dev/null
 
-echo ""
-echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-echo -e "# ${RED}   ACTION REQUIRED -- Install LlamaStack instance (Helm)${COLOR_RESET}"
-echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-echo "#"
-echo "# 🌐 OpenShift Console → Developer perspective"
-echo "#   → Select project: granite-demo"
-echo "#   → Helm (left sidebar) → Create → Helm Release"
-echo "#   → Search: 'llama-stack-operator-instance'"
-echo "#   → Click it → Switch to YAML view and update:"
-echo "#"
-echo "#   models:"
-echo "#     - name: ${GRANITE_MODEL_ID}"
-echo "#       url: ${GRANITE_ENDPOINT}"
-echo "#"
-echo "#   Set these to false (not needed for demo):"
-echo "#     telemetry.enabled: false"
-echo "#     otelCollector.enabled: false"
-echo "#     rag.enabled: false"
-echo "#     mcp.enabled: false"
-echo "#     mcp_aihub.enabled: false"
-echo "#     eval.enabled: false"
-echo "#     guardrails.enabled: false"
-echo "#"
-echo "#   → Click 'Create'"
-echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-
-wait
-
-echo ""
-echo "# ⏳ Waiting for LlamaStack API server to start..."
-
-wait
-
-verify_step "LlamaStack pod is Running" "oc get pods -n granite-demo -l app=llama-stack -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
-
-echo ""
-echo "# 🔧 Step 2: Install LlamaStack Playground UI"
-echo "#   • Streamlit-based chat interface"
-echo "#   • Connects to the LlamaStack API service"
-
-wait
-
-echo ""
-echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-echo -e "# ${RED}   ACTION REQUIRED -- Install LlamaStack Playground (Helm)${COLOR_RESET}"
-echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-echo "#"
-echo "# 🌐 OpenShift Console → Developer → Helm → Create → Helm Release"
-echo "#   → Search: 'llama-stack-playground'"
-echo "#   → Click it → Switch to YAML view and update:"
-echo "#"
-echo "#   playground:"
-echo "#     llamaStackUrl: http://llama-stack:8321"
-echo "#     defaultModel: ${GRANITE_MODEL_ID}"
-echo "#   route:"
-echo "#     enabled: true"
-echo "#   networkPolicy:"
-echo "#     enabled: false"
-echo "#"
-echo "#   → Click 'Create'"
-echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-
-wait
-
-echo ""
-echo "# ⏳ Waiting for Playground to start..."
-
-wait
-
-verify_step "Playground pod is Running" "oc get pods -n granite-demo -l app=llama-stack-playground -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+verify_step "LlamaStack server is Running" "oc get pods -n granite-demo -l app=llama-stack -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+verify_step "Playground is Running" "oc get pods -n granite-demo -l app=llama-stack-playground -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
 
 echo ""
 echo "# 🌐 Opening the Playground..."
 
 wait
 
-pe "PLAYGROUND_URL=\$(oc get route -n granite-demo -l app=llama-stack-playground -o jsonpath='https://{.items[0].spec.host}') && echo \$PLAYGROUND_URL"
+pe "PLAYGROUND_URL=\$(oc get route llama-stack-playground -n granite-demo -o jsonpath='https://{.spec.host}') && echo \$PLAYGROUND_URL"
 
 pe "$BROWSER_OPEN \$PLAYGROUND_URL"
 
@@ -918,6 +850,13 @@ echo ""
 echo "# ⚙️  While we're here, let's deploy the pipeline server"
 echo "#   so it's ready when we get to Section 12."
 echo "#   This takes a couple minutes to start up."
+echo "#"
+echo "# 📦 The pipeline server reuses our MinIO S3 storage"
+echo "#   • Same 'models' bucket we created earlier"
+echo "#   • Artifacts stored under the pipeline-artifacts/ prefix"
+echo "#   • No extra bucket needed -- pipelines and models share storage"
+echo "#   • You can also configure this from the RHOAI Dashboard"
+echo "#     (Data Science Projects → Pipelines → Configure pipeline server)"
 
 wait
 
@@ -988,10 +927,10 @@ echo "#"
 echo "# 5️⃣  🌐 MinIO Console:"
 echo "#   → Object Browser → 'models' bucket"
 echo "#   → You should see: production/demo-model/"
-echo "#     → config.pbtxt"
-echo "#     → 1/model.savedmodel/saved_model.pb"
-echo "#     → 1/model.savedmodel/fingerprint.pb"
-echo "#     → 1/model.savedmodel/variables/"
+echo "#     → config.pbtxt                          -- Triton serving config (inputs, outputs, platform)"
+echo "#     → 1/model.savedmodel/saved_model.pb     -- TensorFlow graph (model architecture + ops)"
+echo "#     → 1/model.savedmodel/fingerprint.pb     -- Model hash for version tracking"
+echo "#     → 1/model.savedmodel/variables/          -- Trained weights and biases"
 echo "#"
 echo "# ✅ Model trained on GPU, exported, and stored in S3"
 echo "#   Next: register it in the Model Registry before deploying"
@@ -1082,7 +1021,11 @@ echo "#"
 echo "# 🔗 Model location:"
 echo "#   → Source model format:  tensorflow"
 echo "#   → Source model version: 2"
-echo "#   → Model location (URI): s3://models/production/demo-model/"
+echo "#   → Select 'Object storage' (not URI)"
+echo "#     Endpoint: http://minio-service.default.svc.cluster.local:9000"
+echo "#     Bucket:   models"
+echo "#     Region:   us-east-1"
+echo "#     Path:     production/"
 echo "#"
 echo "#   → Click 'Register model'"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -1137,6 +1080,32 @@ echo "# 🚀 Deploy directly from the Model Registry"
 echo "#   • The registry knows the artifact URI, format, and version"
 echo "#   • Deployment is tracked -- shows up in the registry's Deployments tab"
 echo "#   • Full lineage: trained → registered → deployed → serving"
+
+wait
+
+echo ""
+echo "# 🔧 First, we need to free a GPU for our fraud model."
+echo "#   Both A10G GPUs are currently in use:"
+echo "#     GPU 1: Granite LLM (granite-demo) -- done after Section 8"
+echo "#     GPU 2: Training workbench (fsi-demo) -- still needed"
+echo "#"
+echo "# 📉 Scaling down the Granite deployment + LlamaStack"
+echo "#   (we're done chatting -- time to deploy our own model)"
+
+wait
+
+pe "oc scale deployment llama-stack llama-stack-playground -n granite-demo --replicas=0"
+
+GRANITE_ISVC=$(oc get inferenceservice -n granite-demo -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+if [ -n "$GRANITE_ISVC" ]; then
+  pe "oc patch inferenceservice ${GRANITE_ISVC} -n granite-demo --type=json -p='[{\"op\":\"replace\",\"path\":\"/spec/predictor/minReplicas\",\"value\":0},{\"op\":\"replace\",\"path\":\"/spec/predictor/scaleTarget\",\"value\":0}]'"
+  echo ""
+  echo "# ⏳ Waiting for Granite predictor to scale down..."
+  while oc get pods -n granite-demo -l serving.kserve.io/inferenceservice=${GRANITE_ISVC} --no-headers 2>/dev/null | grep -q Running; do
+    sleep 5
+  done
+  echo -e "  ${GREEN}✅ Granite scaled down -- GPU freed${COLOR_RESET}"
+fi
 
 wait
 

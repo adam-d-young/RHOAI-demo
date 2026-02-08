@@ -3,8 +3,9 @@
 # Uses our existing MinIO for pipeline artifact storage.
 #
 # Prerequisites:
-#   - fsi-demo namespace exists (created in Section 8)
-#   - MinIO running in default namespace with 'models' bucket
+#   - fsi-demo namespace exists (created in Section 9)
+#   - MinIO running in default namespace
+#   - 'models' bucket created live during demo (Section 9)
 ---
 apiVersion: v1
 kind: Secret

@@ -1,0 +1,74 @@
+# LlamaStack Playground (Streamlit chat UI)
+# Connects to llama-stack-service:8321 for inference.
+# DEFAULT_MODEL env var should be patched after apply to match
+# the model ID registered in LlamaStack.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llama-stack-playground
+  labels:
+    app: llama-stack-playground
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: llama-stack-playground
+  template:
+    metadata:
+      labels:
+        app: llama-stack-playground
+    spec:
+      containers:
+        - name: llama-stack-playground
+          image: quay.io/eformat/streamlit_client:0.2.15
+          ports:
+            - containerPort: 8501
+              name: http
+          env:
+            - name: LLAMA_STACK_ENDPOINT
+              value: "http://llama-stack-service:8321"
+            - name: DEFAULT_MODEL
+              value: "granite"
+            - name: STREAMLIT_SERVER_PORT
+              value: "8501"
+            - name: STREAMLIT_SERVER_ADDRESS
+              value: "0.0.0.0"
+            - name: STREAMLIT_BROWSER_GATHER_USAGE_STATS
+              value: "false"
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llama-stack-playground
+  labels:
+    app: llama-stack-playground
+spec:
+  selector:
+    app: llama-stack-playground
+  ports:
+    - port: 80
+      targetPort: 8501
+      name: http
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: llama-stack-playground
+  labels:
+    app: llama-stack-playground
+spec:
+  to:
+    kind: Service
+    name: llama-stack-playground
+  port:
+    targetPort: http
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect

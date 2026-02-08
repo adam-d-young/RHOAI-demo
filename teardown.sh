@@ -70,12 +70,11 @@ else
   echo -e "${GREEN}MODE: Demo Reset (default)${NC}"
   echo ""
   echo "This will remove resources created during demo.sh:"
-  echo "  • granite-demo namespace (Granite LLM, LlamaStack)"
+  echo "  • granite-demo namespace (Granite LLM, LlamaStack server/playground)"
   echo "  • fsi-demo namespace (workbench, pipelines, model deployments)"
   echo "  • Model Registry instance (rhoai-model-registries)"
   echo "  • Hardware profile (nvidia-gpu)"
   echo "  • Triton serving runtime template"
-  echo "  • LlamaStack Helm releases"
   echo "  • RHOAI operator (uninstalled so Section 4 can re-install live)"
   echo "  • MinIO data (models bucket, uploaded artifacts)"
   echo "  • MySQL data (model registry metadata)"
@@ -133,25 +132,7 @@ safe_delete_namespace() {
 ######################################################################
 
 echo "═══════════════════════════════════════════"
-echo "Step 1: Remove LlamaStack Helm releases"
-echo "═══════════════════════════════════════════"
-
-if command -v helm &>/dev/null; then
-  for release in llama-stack-playground llama-stack-instance; do
-    if helm status "$release" -n granite-demo &>/dev/null; then
-      echo -e "  ${YELLOW}Uninstalling Helm release: ${release}...${NC}"
-      helm uninstall "$release" -n granite-demo 2>/dev/null || true
-    else
-      echo -e "  ${CYAN}Helm release ${release} not found${NC}"
-    fi
-  done
-else
-  echo -e "  ${CYAN}Helm not installed, skipping Helm cleanup${NC}"
-fi
-echo ""
-
-echo "═══════════════════════════════════════════"
-echo "Step 2: Delete demo namespaces"
+echo "Step 1: Delete demo namespaces"
 echo "═══════════════════════════════════════════"
 echo -e "  ${CYAN}(Deleting while RHOAI operator is still running so it can reconcile finalizers)${NC}"
 
@@ -160,7 +141,7 @@ safe_delete_namespace "fsi-demo"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 3: Delete Model Registry instance"
+echo "Step 2: Delete Model Registry instance"
 echo "═══════════════════════════════════════════"
 
 safe_delete "modelregistry" "fsi-model-registry" "rhoai-model-registries"
@@ -169,21 +150,21 @@ safe_delete_namespace "rhoai-model-registries"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 4: Delete Hardware Profile"
+echo "Step 3: Delete Hardware Profile"
 echo "═══════════════════════════════════════════"
 
 safe_delete "hardwareprofile" "nvidia-gpu" "redhat-ods-applications"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 5: Delete Triton ServingRuntime template"
+echo "Step 4: Delete Triton ServingRuntime template"
 echo "═══════════════════════════════════════════"
 
 safe_delete "template" "triton-kserve-gpu-template" "redhat-ods-applications"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 6: Wait for namespace cleanup"
+echo "Step 5: Wait for namespace cleanup"
 echo "═══════════════════════════════════════════"
 echo -e "  ${YELLOW}Waiting for namespaces to fully terminate before removing RHOAI...${NC}"
 
@@ -197,7 +178,7 @@ echo -e "  ${GREEN}Namespaces cleaned up${NC}"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 7: Uninstall RHOAI operator"
+echo "Step 6: Uninstall RHOAI operator"
 echo "═══════════════════════════════════════════"
 
 # Delete DSC (this tears down all RHOAI components)
@@ -230,7 +211,7 @@ fi
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 8: Reset MinIO and MySQL data"
+echo "Step 7: Reset MinIO and MySQL data"
 echo "═══════════════════════════════════════════"
 
 echo -e "  ${YELLOW}Clearing MinIO data (models bucket, uploaded artifacts)...${NC}"
@@ -272,7 +253,7 @@ echo -e "${RED}═════════════════════�
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 9: Delete MinIO completely"
+echo "Step 8: Delete MinIO completely"
 echo "═══════════════════════════════════════════"
 
 safe_delete "deployment" "minio" "default"
@@ -284,14 +265,14 @@ safe_delete "pvc" "minio-pvc" "default"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 10: Delete MySQL (Model Registry DB)"
+echo "Step 9: Delete MySQL (Model Registry DB)"
 echo "═══════════════════════════════════════════"
 
 safe_delete_namespace "rhoai-model-registry"
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 11: Delete GPU operators"
+echo "Step 10: Delete GPU operators"
 echo "═══════════════════════════════════════════"
 
 echo ""
@@ -335,7 +316,7 @@ fi
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 12: Delete GPU machineset"
+echo "Step 11: Delete GPU machineset"
 echo "═══════════════════════════════════════════"
 
 echo ""
@@ -360,7 +341,7 @@ fi
 echo ""
 
 echo "═══════════════════════════════════════════"
-echo "Step 13: Remove demo user"
+echo "Step 12: Remove demo user"
 echo "═══════════════════════════════════════════"
 
 # Note: Removing htpasswd IDP from OAuth is complex (need to patch the array).
