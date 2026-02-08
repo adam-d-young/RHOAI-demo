@@ -847,6 +847,10 @@ section_11() {
 begin_section 11 "🔮" "Test Inference" || return 0
 # Depends on: Model deployed (Section 10)
 verify_step "InferenceService is Ready" "oc get inferenceservice -n fsi-demo -o jsonpath='{.items[0].status.conditions[?(@.type==\"Ready\")].status}' 2>/dev/null | grep -q True"
+
+# Get the InferenceService name to display in instructions
+ISVC_NAME=$(oc get inferenceservice -n fsi-demo -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+
 echo "#"
 echo "# 🎯 The payoff -- send data to the live model and get a prediction!"
 echo "#   • Our model: 5 floats in → 1 sigmoid probability out"
@@ -863,7 +867,11 @@ echo "#"
 echo "# 🌐 In JupyterLab (same workbench from Section 8):"
 echo "#   → Navigate to RHOAI-demo/notebooks/"
 echo "#   → Open: 📓 inference-test.ipynb"
-echo "#   → Run each cell with Shift+Enter"
+echo "#"
+echo -e "# ${CYAN}✏️  FIRST: Update ISVC_NAME in the first code cell:${COLOR_RESET}"
+echo "#     ISVC_NAME = \"${ISVC_NAME:-<check oc get inferenceservice>}\""
+echo "#"
+echo "#   → Then run each cell with Shift+Enter"
 echo "#"
 echo "# 💡 What it does:"
 echo "#   1. Queries Triton for model metadata (auto-detects tensor names)"
