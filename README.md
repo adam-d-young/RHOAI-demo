@@ -20,17 +20,19 @@ GPU infrastructure must be configured before running this demo. Use [ocp-gpu-set
 3. NVIDIA GPU Operator v25.3.0
 4. Custom resources (ClusterPolicy, NFD config, driver spec)
 
-Clone `ocp-gpu-setup` as a sibling directory:
+Clone sibling repos alongside this one:
 
 ```
 your-workspace/
-  ocp-gpu-setup/    # GPU infrastructure setup
-  RHOAI-demo/       # This repo
+  ocp-gpu-setup/          # GPU infrastructure setup
+  genaiops-helmcharts/    # LlamaStack Helm charts
+  RHOAI-demo/             # This repo
 ```
 
 ### Tools
 
 - `oc` CLI, logged into the target cluster
+- `helm` -- `brew install helm`
 - `bat` (syntax-highlighted file viewer) -- `brew install bat`
 
 ## Repo Structure
@@ -40,6 +42,7 @@ RHOAI-demo/
 ├── demo-magic.sh                          # demo-magic library (typewriter effect)
 ├── setup.sh                               # Pre-demo cluster setup (GPU, MinIO, MySQL)
 ├── demo.sh                                # Live demo script (13 sections, skip support)
+├── teardown.sh                            # Reset script (demo reset or full cluster reset)
 ├── manifests/
 │   ├── dspa.yaml                          # Pipeline server (DSPA) + S3 credentials
 │   ├── gpu-cluster-policy.yaml            # NVIDIA ClusterPolicy reference
@@ -79,6 +82,19 @@ Run `demo.sh` during the presentation. It uses [demo-magic](https://github.com/p
 ```
 
 Each section can be skipped individually. Dependency checks warn if a previous section was skipped.
+
+### 3. Teardown
+
+Reset after the demo:
+
+```bash
+./teardown.sh          # Demo reset -- remove demo projects, keep infrastructure
+./teardown.sh --full   # Full cluster reset -- remove everything (requires confirmation)
+```
+
+Demo reset removes `granite-demo`, `fsi-demo`, model registry, hardware profile, and serving runtimes. Infrastructure (MinIO, MySQL, GPU operators, RHOAI) is preserved so you can re-run the demo.
+
+Full reset also removes RHOAI, MinIO, MySQL, GPU operators, and machinesets. Requires typing `FULL RESET` to confirm.
 
 ## Demo Sections
 

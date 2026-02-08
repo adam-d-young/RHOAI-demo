@@ -17,6 +17,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GPU_SETUP_DIR="${SCRIPT_DIR}/../ocp-gpu-setup"
+HELMCHARTS_DIR="${SCRIPT_DIR}/../genaiops-helmcharts/charts"
 
 # Helper: find a driver pod name (returns empty string if none found)
 find_driver_pod() {
@@ -48,11 +49,24 @@ echo ""
 echo "This script is idempotent -- safe to re-run if interrupted."
 echo ""
 
-# Verify oc login
+# Verify prerequisites
 if ! oc whoami &>/dev/null; then
   echo "ERROR: Not logged into an OpenShift cluster."
   echo "  Run: oc login <cluster-url>"
   exit 1
+fi
+
+if ! command -v helm &>/dev/null; then
+  echo "WARNING: helm not found. Install with: brew install helm"
+  echo "  Helm is needed for LlamaStack deployment in the demo."
+  echo ""
+fi
+
+if [ ! -d "$HELMCHARTS_DIR" ]; then
+  echo "WARNING: genaiops-helmcharts not found at: $HELMCHARTS_DIR"
+  echo "  Clone it alongside this repo:"
+  echo "    git clone <genaiops-helmcharts-url> ../genaiops-helmcharts"
+  echo ""
 fi
 
 echo "Logged in as: $(oc whoami)"

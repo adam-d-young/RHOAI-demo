@@ -15,10 +15,11 @@
 ######################################################################
 
 DEMO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HELMCHARTS_DIR="${DEMO_DIR}/../genaiops-helmcharts/charts"
 
 # Preflight: check required tools
 MISSING=""
-for tool in oc bat; do
+for tool in oc bat helm; do
   if ! command -v "$tool" &>/dev/null; then
     MISSING="$MISSING $tool"
   fi
@@ -31,6 +32,7 @@ if [ -n "$MISSING" ]; then
   echo ""
   echo "  oc   → brew install openshift-cli (or download from OpenShift console)"
   echo "  bat  → brew install bat"
+  echo "  helm → brew install helm"
   echo "  oc login → oc login <cluster-url>"
   exit 1
 fi
@@ -648,8 +650,9 @@ echo "#"
 echo "# 💬 LlamaStack = unified API for LLM inference"
 echo "#   • Open-source project by Meta, supported by Red Hat"
 echo "#   • Provides a standard API for chat, completions, embeddings"
-echo "#   • Includes a web-based Playground for interactive chat"
-echo "#   • We enabled the LlamaStack operator back in Section 4"
+echo "#   • The operator was enabled in the DSC back in Section 4"
+echo "#   • Now we deploy an INSTANCE pointing at our Granite model"
+echo "#   • Plus a Playground UI for interactive chat"
 
 wait
 
@@ -670,44 +673,89 @@ wait
 # Get the Granite internal endpoint
 GRANITE_ISVC=$(oc get inferenceservice -n granite-demo -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
 GRANITE_ENDPOINT="http://${GRANITE_ISVC}-predictor.granite-demo.svc.cluster.local:8080/v1"
+
+# Get the model ID that vLLM is serving (needed for LlamaStack config)
+GRANITE_MODEL_ID=$(oc exec -n granite-demo deploy/${GRANITE_ISVC}-predictor -c kserve-container -- curl -s http://localhost:8080/v1/models 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['data'][0]['id'])" 2>/dev/null) || GRANITE_MODEL_ID="granite"
+
 echo ""
 echo "# 🔗 Granite internal endpoint:"
 echo "#   ${GRANITE_ENDPOINT}"
+echo "#   Model ID: ${GRANITE_MODEL_ID}"
 
 wait
 
 echo ""
-echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-echo -e "# ${RED}   ACTION REQUIRED -- Deploy LlamaStack + Playground${COLOR_RESET}"
-echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-echo "#"
-echo "# 📋 Deploy LlamaStack Operator Instance:"
-echo "#   → OpenShift Console → Operators → Installed Operators"
-echo "#   → Find 'LlamaStack' → 'LlamaStack API' tab"
-echo "#   → Click 'Create LlamaStackAPI'"
-echo "#   → Name: granite-llamastack"
-echo "#   → Namespace: granite-demo"
-echo "#   → Model endpoint: ${GRANITE_ENDPOINT}"
-echo "#   → Click 'Create'"
-echo "#"
-echo "# 📋 Deploy LlamaStack Playground:"
-echo "#   → The playground provides a chat UI"
-echo "#   → Can be deployed via Helm chart or manifest"
-echo "#   → Points to the LlamaStack API service"
-echo "#"
-echo "# 💡 Alternative: Use the OpenShift Console Helm chart releases"
-echo "#   → Developer perspective → Helm → Create → llama-stack-playground"
-echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "# 🔧 Step 1: Deploy LlamaStack operator instance"
+echo "#   • Creates a LlamaStackDistribution CR"
+echo "#   • The RHOAI-managed operator sees this CR and deploys:"
+echo "#     - LlamaStack API server (port 8321)"
+echo "#     - ConfigMap with model routing config"
+echo "#   • Uses a Helm chart from genaiops-helmcharts"
 
 wait
+
+echo ""
+echo "# 📋 Installing LlamaStack operator instance via Helm..."
+
+wait
+
+pe "helm install llama-stack-instance ${HELMCHARTS_DIR}/llama-stack-operator-instance \
+  --namespace granite-demo \
+  --set models[0].name=${GRANITE_MODEL_ID} \
+  --set models[0].url=${GRANITE_ENDPOINT} \
+  --set telemetry.enabled=false \
+  --set otelCollector.enabled=false \
+  --set rag.enabled=false \
+  --set mcp.enabled=false \
+  --set mcp_aihub.enabled=false \
+  --set eval.enabled=false \
+  --set guardrails.enabled=false"
+
+echo ""
+echo "# ⏳ Waiting for LlamaStack API server to start..."
+
+wait
+
+verify_step "LlamaStack pod is Running" "oc get pods -n granite-demo -l app.kubernetes.io/name=llama-stack -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+
+echo ""
+echo "# 🔧 Step 2: Deploy LlamaStack Playground UI"
+echo "#   • Streamlit-based chat interface"
+echo "#   • Connects to the LlamaStack API service"
+echo "#   • Creates an OpenShift Route for browser access"
+
+wait
+
+pe "helm install llama-stack-playground ${HELMCHARTS_DIR}/llama-stack-playground \
+  --namespace granite-demo \
+  --set playground.llamaStackUrl=http://llama-stack:8321 \
+  --set playground.defaultModel=${GRANITE_MODEL_ID} \
+  --set route.enabled=true \
+  --set networkPolicy.enabled=false"
+
+echo ""
+echo "# ⏳ Waiting for Playground to start..."
+
+wait
+
+verify_step "Playground pod is Running" "oc get pods -n granite-demo -l app.kubernetes.io/name=llama-stack-playground -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q Running"
+
+echo ""
+echo "# 🌐 Opening the Playground..."
+
+wait
+
+pe "PLAYGROUND_URL=\$(oc get route -n granite-demo -l app.kubernetes.io/name=llama-stack-playground -o jsonpath='https://{.items[0].spec.host}') && echo \$PLAYGROUND_URL"
+
+pe "$BROWSER_OPEN \$PLAYGROUND_URL"
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo -e "# ${RED}   ACTION REQUIRED -- Chat with Granite!${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 🌐 Open the Playground route in your browser"
-echo "#   → Select the Granite model"
+echo "# 🌐 In the Playground:"
+echo "#   → Select model: ${GRANITE_MODEL_ID}"
 echo "#   → Try these FSI-relevant prompts:"
 echo "#"
 echo "#   💬 'Explain the key components of Basel III capital requirements'"
@@ -720,6 +768,8 @@ echo "#   • This model is running on our A10G GPU, on OpenShift"
 echo "#   • Enterprise-grade: Red Hat validated, IBM-developed"
 echo "#   • No data leaves the cluster -- internal inference only"
 echo "#   • From catalog browse to live chat in minutes"
+echo "#   • LlamaStack provides a standard API -- swap models without"
+echo "#     changing your application code"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
 wait
