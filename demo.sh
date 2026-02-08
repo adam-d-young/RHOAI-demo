@@ -617,8 +617,8 @@ echo "#   → Navigate to RHOAI-demo/notebooks/"
 echo "#   → Run in order:"
 echo "#"
 echo "#   📓 gpu-check.py        → Can TensorFlow see the A10G?"
-echo "#   📓 gpu-demo.py         → GPU vs CPU matrix multiply"
-echo "#   📓 train-and-upload.py → Train on GPU, upload to MinIO"
+echo "#   📓 gpu-demo.py         → GPU matrix multiply"
+echo "#   📓 train-and-upload.py → Train model, upload to MinIO"
 echo "#"
 echo -e "# ${RED}   DO NOT continue until train-and-upload.py completes${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -675,78 +675,30 @@ begin_section 9 "🔮" "Test Inference" || return 0
 echo "#"
 echo "# 🎯 The payoff -- send data to the live model and get a prediction!"
 echo "#   • Our model: 5 floats in → 1 sigmoid probability out"
-echo "#   • Using Triton's v2 REST API"
-echo "#   • No external route -- we curl from inside the cluster"
-echo "#   • Same pattern the lab-instructions repo uses"
+echo "#   • Using Triton's v2 REST API from inside the cluster"
+echo "#   • The notebook auto-detects the input tensor name"
 
 wait
 
 echo ""
-echo "# 📡 Step 1: Check the model is loaded in Triton"
-
-wait
-
-pe "oc exec -n fsi-demo deployment/fsi-demo-model-predictor -- curl -s localhost:8080/v2/models/demo-model | python3 -m json.tool"
-
-echo ""
-echo "# 🔍 Detect the input tensor name"
-echo "#   TF/Keras appends a suffix each export (keras_tensor, keras_tensor_9, etc.)"
-echo "#   We read it from the model metadata so the request always matches"
-
-wait
-
-INPUT_NAME=$(oc exec -n fsi-demo deployment/fsi-demo-model-predictor -- curl -s localhost:8080/v2/models/demo-model 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['inputs'][0]['name'])" 2>/dev/null)
-echo -e "  ${GREEN}✅ Input tensor: ${INPUT_NAME}${COLOR_RESET}"
-
-echo ""
-echo "# 📡 Step 2: Send a prediction request"
-echo "#   Input: 5 features → [0.1, 0.5, 0.3, 0.7, 0.2]"
-echo "#   Output: 1 sigmoid value (0-1 probability)"
-
-wait
-
-pe "oc exec -n fsi-demo deployment/fsi-demo-model-predictor -- curl -s localhost:8080/v2/models/demo-model/infer \\
-  -H 'Content-Type: application/json' \\
-  -d '{
-    \"inputs\": [{
-      \"name\": \"${INPUT_NAME}\",
-      \"shape\": [1, 5],
-      \"datatype\": \"FP32\",
-      \"data\": [0.1, 0.5, 0.3, 0.7, 0.2]
-    }]
-  }' | python3 -m json.tool"
-
-echo ""
-echo "# 📡 Step 3: Try different inputs"
-echo "#   Changing the feature values changes the prediction"
-
-wait
-
-pe "oc exec -n fsi-demo deployment/fsi-demo-model-predictor -- curl -s localhost:8080/v2/models/demo-model/infer \\
-  -H 'Content-Type: application/json' \\
-  -d '{
-    \"inputs\": [{
-      \"name\": \"${INPUT_NAME}\",
-      \"shape\": [1, 5],
-      \"datatype\": \"FP32\",
-      \"data\": [0.9, 0.1, 0.8, 0.2, 0.95]
-    }]
-  }' | python3 -m json.tool"
-
-echo ""
-echo "# 💡 What just happened:"
-echo "#   • curl ran inside the Triton pod (oc exec)"
-echo "#   • Triton loaded the SavedModel from S3 (MinIO)"
-echo "#   • GPU ran the forward pass through our neural network"
-echo "#   • Result: a probability between 0 and 1"
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Run inference notebook${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 In JupyterLab (same workbench):"
+echo "#   → Navigate to RHOAI-demo/notebooks/"
+echo "#   → Run: 📓 inference-test.py"
+echo "#"
+echo "# 💡 What it does:"
+echo "#   1. Queries Triton for model metadata (auto-detects tensor names)"
+echo "#   2. Sends two different prediction requests"
+echo "#   3. Shows the sigmoid probability output (0-1)"
 echo "#"
 echo "# 🔑 In production this would be:"
 echo "#   • Fraud detection scores on transactions"
 echo "#   • Credit risk assessments"
 echo "#   • Real-time pricing models"
-echo "#"
-echo "# 🌐 For external access, create a Gateway + HTTPRoute"
-echo "#   to expose the endpoint outside the cluster"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
 wait
 
