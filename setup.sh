@@ -40,6 +40,7 @@ echo "  5. Verify GPU infrastructure"
 echo "  6. Create OpenShift user for RHOAI Dashboard (htpasswd)"
 echo "  7. Deploy MinIO (S3-compatible object storage)"
 echo "  8. Deploy MySQL (Model Registry database backend)"
+echo "  9. Pre-warm GPU serving images (optional)"
 echo ""
 echo "RHOAI operator will be installed LIVE during the demo."
 echo "Model Registry instance is created LIVE during the demo (requires RHOAI CRDs)."
@@ -561,11 +562,125 @@ fi
 echo ""
 
 ######################################################################
-# Step 9: Final Verification
+# Step 9: Pre-warm GPU Serving Images (optional)
 ######################################################################
 
 echo "=============================================="
-echo "Step 9: Final Verification"
+echo "Step 9: Pre-warm GPU Serving Images (optional)"
+echo "=============================================="
+echo ""
+echo "This pulls large serving runtime images onto GPU nodes so"
+echo "model deployments start faster during the demo."
+echo ""
+echo "Images to pre-warm:"
+echo "  • vLLM CUDA runtime (~8GB) -- serves Granite LLM"
+echo "  • Triton Inference Server (~10GB) -- serves custom ML models"
+echo ""
+echo "Note: The Granite ModelCar image (model weights) is pulled by"
+echo "KServe during deployment. To fully pre-warm including the model,"
+echo "install RHOAI first, deploy the model once, then delete it."
+echo ""
+
+read -p "Pre-warm serving runtime images on GPU nodes? (y/n): " PREWARM_CHOICE
+if [ "$PREWARM_CHOICE" = "y" ]; then
+
+  GPU_NODE_COUNT=$(oc get nodes -l nvidia.com/gpu.present=true --no-headers 2>/dev/null | wc -l | tr -d ' ')
+  if [ "$GPU_NODE_COUNT" -eq 0 ]; then
+    echo "No GPU nodes found. Skipping pre-warm."
+  else
+    echo ""
+    echo "Found $GPU_NODE_COUNT GPU node(s). Deploying pre-warm DaemonSet..."
+    echo ""
+
+    VLLM_IMAGE="registry.redhat.io/rhaiis/vllm-cuda-rhel9@sha256:ad756c01ec99a99cc7d93401c41b8d92ca96fb1ab7c5262919d818f2be4f3768"
+    TRITON_IMAGE="nvcr.io/nvidia/tritonserver:24.01-py3"
+
+    cat <<PREWARM_EOF | oc apply -f -
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: prewarm-serving-images
+  namespace: default
+  labels:
+    app: prewarm-serving-images
+spec:
+  selector:
+    matchLabels:
+      app: prewarm-serving-images
+  template:
+    metadata:
+      labels:
+        app: prewarm-serving-images
+    spec:
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      nodeSelector:
+        nvidia.com/gpu.present: "true"
+      containers:
+      - name: vllm
+        image: ${VLLM_IMAGE}
+        command: ["sleep", "infinity"]
+        resources:
+          requests:
+            cpu: 10m
+            memory: 10Mi
+          limits:
+            cpu: 100m
+            memory: 100Mi
+      - name: triton
+        image: ${TRITON_IMAGE}
+        command: ["sleep", "infinity"]
+        resources:
+          requests:
+            cpu: 10m
+            memory: 10Mi
+          limits:
+            cpu: 100m
+            memory: 100Mi
+      restartPolicy: Always
+PREWARM_EOF
+
+    echo ""
+    echo "Waiting for images to pull on all GPU nodes..."
+    echo "This may take several minutes for multi-GB images."
+    echo ""
+    echo "WHAT TO LOOK FOR:"
+    echo "  - DaemonSet DESIRED/CURRENT/READY should all equal $GPU_NODE_COUNT"
+    echo "  - Pod STATUS: Running means both images are cached on that node"
+    echo ""
+
+    if oc rollout status daemonset/prewarm-serving-images -n default --timeout=900s 2>/dev/null; then
+      echo ""
+      echo "Images cached on all GPU nodes. Cleaning up..."
+      oc delete daemonset prewarm-serving-images -n default
+      echo "Pre-warm complete."
+    else
+      echo ""
+      echo "Rollout timed out. Checking status..."
+      oc get pods -l app=prewarm-serving-images -n default
+      echo ""
+      read -p "Clean up DaemonSet anyway? (y/n): " CLEANUP
+      if [ "$CLEANUP" = "y" ]; then
+        oc delete daemonset prewarm-serving-images -n default 2>/dev/null || true
+      else
+        echo "DaemonSet left running. Delete it later with:"
+        echo "  oc delete daemonset prewarm-serving-images -n default"
+      fi
+    fi
+  fi
+else
+  echo "Skipping pre-warm."
+fi
+echo ""
+
+######################################################################
+# Step 10: Final Verification
+######################################################################
+
+echo "=============================================="
+echo "Step 10: Final Verification"
 echo "=============================================="
 echo ""
 
