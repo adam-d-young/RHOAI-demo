@@ -20,13 +20,37 @@ x = tf.keras.layers.Dense(10, activation='relu')(inputs)
 outputs = tf.keras.layers.Dense(1, activation='sigmoid')(x)
 model = tf.keras.Model(inputs=inputs, outputs=outputs)
 
-# --- 3. Export for Triton ---
-# Structure MUST be: {LOCAL_TEMP_DIR}/{MODEL_VERSION}/saved_model.pb
+# --- 3. Export as TensorFlow SavedModel ---
+# TensorFlow exports produce these files:
+#   saved_model.pb  -- the computation graph (layers, ops, shapes) in Protocol Buffer format
+#   fingerprint.pb  -- hash of the model for integrity/versioning
+#   variables/      -- the trained weights (what the model actually learned)
+#     variables.data-00000-of-00001  -- weight values (can be GBs for large models)
+#     variables.index               -- index mapping variable names to data offsets
+#
+# Triton expects: {model_name}/{version}/saved_model.pb
+# So the S3 layout will be: production/demo-model/1/saved_model.pb
 export_path = os.path.join(LOCAL_TEMP_DIR, MODEL_VERSION)
 model.export(export_path)
 print(f"Model exported locally to: {os.path.abspath(export_path)}")
 
-# --- 4. Upload to MinIO (S3) with Prefix ---
+# --- 4. Generate Triton config.pbtxt ---
+# Triton needs this file at the model root (next to the version folder)
+# to know which backend to use and the tensor shapes.
+#   name       -- must match the model directory name
+#   backend    -- "tensorflow" tells Triton to load it as a SavedModel
+#   input/output -- tensor names, types, and dimensions
+config_content = f"""name: "{MODEL_NAME}"
+backend: "tensorflow"
+input [{{ name: "keras_tensor", data_type: TYPE_FP32, dims: [5] }}]
+output [{{ name: "output_0", data_type: TYPE_FP32, dims: [1] }}]
+"""
+config_path = os.path.join(LOCAL_TEMP_DIR, "config.pbtxt")
+with open(config_path, "w") as f:
+    f.write(config_content)
+print(f"Triton config written to: {os.path.abspath(config_path)}")
+
+# --- 5. Upload to MinIO (S3) with Prefix ---
 print("\nUploading to S3...")
 s3_endpoint = os.environ.get('AWS_S3_ENDPOINT')
 access_key = os.environ.get('AWS_ACCESS_KEY_ID')

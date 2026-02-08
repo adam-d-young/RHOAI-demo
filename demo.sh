@@ -96,6 +96,39 @@ verify_manifest() {
   done
 }
 
+# Helper: section header with optional skip
+# Returns 1 if skipped (use: begin_section ... || return 0)
+begin_section() {
+  local num="$1" icon="$2" title="$3"
+  echo ""
+  echo -e "# ${icon} ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+  echo -e "# ${GREEN}SECTION ${num}: ${title}${COLOR_RESET}"
+  echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+  read -p "  Skip this section? (y/N): " SKIP_SECTION
+  if [ "$SKIP_SECTION" = "y" ]; then
+    echo -e "  ${CYAN}⏭️  Skipped Section ${num}${COLOR_RESET}"
+    return 1
+  fi
+  return 0
+}
+
+# Helper: ensure a variable is set, try to resolve it if not
+# Usage: ensure_var RHOAI_URL "oc get gateway ..."
+ensure_var() {
+  local varname="$1"
+  local cmd="$2"
+  if [ -z "${!varname:-}" ]; then
+    local val
+    val=$(eval "$cmd" 2>/dev/null) || true
+    if [ -n "$val" ]; then
+      eval "$varname=\"$val\""
+      echo -e "  ${GREEN}✅ ${varname} resolved${COLOR_RESET}"
+    else
+      echo -e "  ${RED}⚠️  Could not resolve ${varname} -- was a previous section skipped?${COLOR_RESET}"
+    fi
+  fi
+}
+
 # Configure
 DEMO_PROMPT="${GREEN}➜ ${CYAN}\W ${COLOR_RESET}"
 TYPE_SPEED=20
@@ -124,13 +157,11 @@ echo ""
 wait
 
 ######################################################################
-# SECTION 1: Check Current State
+# Section functions
 ######################################################################
 
-echo ""
-echo -e "# 🔍 ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
-echo -e "# ${GREEN}SECTION 1: Check Current State${COLOR_RESET}"
-echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+section_1() {
+begin_section 1 "🔍" "Check Current State" || return 0
 echo "#"
 echo "# 📋 What's already on this cluster (from setup):"
 echo "#   • NFD Operator -- discovers hardware features"
@@ -157,15 +188,10 @@ echo "#   • Everything else is blocked → protects expensive GPU nodes"
 echo "#   • We'll need a HardwareProfile later to let ML workloads in"
 
 wait
+}
 
-######################################################################
-# SECTION 2: Verify NFD Operator
-######################################################################
-
-echo ""
-echo -e "# 🔎 ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
-echo -e "# ${GREEN}SECTION 2: Node Feature Discovery (NFD)${COLOR_RESET}"
-echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+section_2() {
+begin_section 2 "🔎" "Node Feature Discovery (NFD)" || return 0
 echo "#"
 echo "# 👁️  NFD = the eyes of the cluster"
 echo "#   • DaemonSet on every node -- scans for hardware"
@@ -189,15 +215,10 @@ wait
 pe "oc describe node \$(oc get nodes -l nvidia.com/gpu.present=true -o jsonpath='{.items[0].metadata.name}') | grep -E 'pci-10de|kernel-version.full|os_release.ID|cpu-model.vendor'"
 
 wait
+}
 
-######################################################################
-# SECTION 3: Verify NVIDIA GPU Operator
-######################################################################
-
-echo ""
-echo -e "# 🎮 ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
-echo -e "# ${GREEN}SECTION 3: NVIDIA GPU Operator${COLOR_RESET}"
-echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+section_3() {
+begin_section 3 "🎮" "NVIDIA GPU Operator" || return 0
 echo "#"
 echo "# 🔧 One operator, entire GPU stack:"
 echo "#   • Drivers, device plugins, container toolkit, monitoring"
@@ -244,15 +265,10 @@ wait
 pe "oc exec -n nvidia-gpu-operator \$(oc get pods -n nvidia-gpu-operator --no-headers | grep driver | awk '{print \$1}' | head -n 1) -c nvidia-driver-ctr -- nvidia-smi"
 
 wait
+}
 
-######################################################################
-# SECTION 4: Install RHOAI Operator
-######################################################################
-
-echo ""
-echo -e "# 📦 ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
-echo -e "# ${GREEN}SECTION 4: Install Red Hat OpenShift AI${COLOR_RESET}"
-echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+section_4() {
+begin_section 4 "📦" "Install Red Hat OpenShift AI" || return 0
 echo "#"
 echo "# 🧠 RHOAI = the ML platform layer on top of OpenShift"
 echo "#   • Workbenches, model serving, pipelines, model registry"
@@ -312,15 +328,13 @@ echo ""
 echo "# ✅ RHOAI 3.0 is ready -- all components healthy"
 
 wait
+}
 
-######################################################################
-# SECTION 5: Hardware Profile
-######################################################################
-
-echo ""
-echo -e "# 🛡️  ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
-echo -e "# ${GREEN}SECTION 5: Hardware Profile with GPU Toleration${COLOR_RESET}"
-echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+section_5() {
+begin_section 5 "🛡️ " "Hardware Profile with GPU Toleration" || return 0
+# Depends on: RHOAI installed, RHOAI_URL set (Section 4)
+verify_step "RHOAI operator is installed" "oc get csv -A 2>/dev/null | grep rhods | grep -q Succeeded"
+ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
 echo "#"
 echo "# 🔑 Remember the GPU taint from Section 1?"
 echo "#   • HardwareProfile is how RHOAI workloads get past it"
@@ -394,15 +408,10 @@ echo "#     • Toleration: nvidia.com/gpu NoSchedule"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
 wait
+}
 
-######################################################################
-# SECTION 6: Verify Pre-deployed Infrastructure
-######################################################################
-
-echo ""
-echo -e "# 🏗️  ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
-echo -e "# ${GREEN}SECTION 6: Pre-deployed Infrastructure${COLOR_RESET}"
-echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+section_6() {
+begin_section 6 "🏗️ " "Pre-deployed Infrastructure" || return 0
 echo "#"
 echo "# 🧱 Two backing services (deployed during setup):"
 echo "#"
@@ -456,15 +465,12 @@ echo "#   → Leave it empty -- notebook will upload here later"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
 wait
+}
 
-######################################################################
-# SECTION 7: Serving Runtime
-######################################################################
-
-echo ""
-echo -e "# 🧠 ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
-echo -e "# ${GREEN}SECTION 7: GPU Serving Runtime${COLOR_RESET}"
-echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+section_7() {
+begin_section 7 "🧠" "GPU Serving Runtime" || return 0
+# Depends on: RHOAI installed (Section 4)
+verify_step "RHOAI operator is installed" "oc get csv -A 2>/dev/null | grep rhods | grep -q Succeeded"
 echo "#"
 echo "# 🖥️  ServingRuntime = how models get served on GPUs"
 echo "#   • Using NVIDIA Triton Inference Server (v24.01)"
@@ -528,15 +534,16 @@ echo ""
 echo "# ✅ 'Triton Inference Server (GPU)' now available in RHOAI Dashboard!"
 
 wait
+}
 
-######################################################################
-# SECTION 8: Workbench Demo (Manual Steps)
-######################################################################
-
-echo ""
-echo -e "# 🧪 ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
-echo -e "# ${GREEN}SECTION 8: Workbench & End-to-End ML Workflow${COLOR_RESET}"
-echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+section_8() {
+begin_section 8 "🧪" "Workbench & End-to-End ML Workflow" || return 0
+# Depends on: RHOAI_URL (Section 4), MINIO_URL (Section 6),
+#             HardwareProfile (Section 5), ServingRuntime (Section 7)
+ensure_var RHOAI_URL "echo https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')"
+ensure_var MINIO_URL "oc get route minio-ui -o jsonpath='https://{.spec.host}'"
+verify_step "HardwareProfile exists" "oc get hardwareprofile nvidia-gpu -n redhat-ods-applications 2>/dev/null"
+verify_step "ServingRuntime template exists" "oc get template triton-kserve-gpu-template -n redhat-ods-applications 2>/dev/null"
 echo "#"
 echo "# 🎯 The fun part! Full ML lifecycle:"
 echo "#   1️⃣  Create Data Science Project"
@@ -565,17 +572,18 @@ wait
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
-echo -e "# ${RED}   ACTION REQUIRED -- Add Data Connection${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Create S3 Connection${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 2️⃣  Inside fsi-demo project → 'Data connections' tab"
-echo "#   → Click 'Add data connection'"
-echo "#   → Name:       minio-models"
-echo "#   → Access key:  minio"
-echo "#   → Secret key:  minio123"
-echo "#   → Endpoint:    http://minio-service:9000"
-echo "#   → Bucket:      models"
-echo "#   → Click 'Add data connection'"
+echo "# 2️⃣  Inside fsi-demo project → 'Connections' tab"
+echo "#   → Click 'Create connection'"
+echo "#   → Connection type: S3 compatible object storage - v1"
+echo "#   → Connection name:  minio-models"
+echo "#   → Access key:       minio"
+echo "#   → Secret key:       minio123"
+echo "#   → Endpoint:         http://minio-service.default.svc.cluster.local:9000"
+echo "#   → Bucket:           models"
+echo "#   → Click 'Create'"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
 wait
@@ -589,11 +597,7 @@ echo "# 3️⃣  'Workbenches' tab → 'Create workbench'"
 echo "#   → Name: gpu-workbench"
 echo "#   → Image: TensorFlow (select CUDA variant if available)"
 echo "#   → Hardware profile: nvidia-gpu"
-echo "#   → Environment variables → 'Add variable':"
-echo "#     → Type: Config Map → Key/value"
-echo "#     → Key:   LD_LIBRARY_PATH"
-echo "#     → Value: /opt/app-root/src/driver-override"
-echo "#   → Data connections → check 'Use existing data connection'"
+echo "#   → Connections → check 'Attach existing connections'"
 echo "#     → Select: minio-models"
 echo "#   → Click 'Create workbench'"
 echo "#   → ⏳ Wait for status: Running"
@@ -647,13 +651,107 @@ echo "# 6️⃣  🌐 RHOAI Dashboard → fsi-demo project"
 echo "#   → 'Models' tab → Click 'Deploy model'"
 echo "#   → Model name:      fsi-demo-model"
 echo "#   → Serving runtime:  'Triton Inference Server (GPU)'"
-echo "#   → Model framework:  tensorflow"
-echo "#   → Model location:   Existing data connection → minio-models"
-echo "#   → Path: (the path from MinIO, e.g. 'model/')"
+echo "#   → Model framework:  tensorflow - 2"
+echo "#   → Model location:   Existing connection → minio-models"
+echo "#   → Path: production/demo-model"
 echo "#   → Click 'Deploy'"
 echo "#   → ⏳ Wait for status: ✅ green checkmark"
 echo "#   → Copy the inference URL"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
+
+echo ""
+echo "# ✅ Model deployment started -- wait for green checkmark"
+echo "#   Copy the inference URL when it appears"
+
+wait
+}
+
+section_9() {
+begin_section 9 "🔮" "Test Inference" || return 0
+echo "#"
+echo "# 🎯 The payoff -- send data to the live model and get a prediction!"
+echo "#   • Our model: 5 floats in → 1 sigmoid probability out"
+echo "#   • Using Triton's v2 REST API"
+echo "#   • Format: POST /v2/models/{model}/infer"
+
+wait
+
+echo ""
+echo "# 🔗 First, let's get the inference endpoint."
+echo "#   Copy this from the RHOAI Dashboard (Models tab → Inference endpoint)"
+echo "#   It looks like: https://demo-model-fsi-demo.apps.<cluster>/v2/models/demo-model/infer"
+
+wait
+
+read -p "  Paste inference URL (or press ENTER to auto-detect): " INFER_URL
+
+if [ -z "$INFER_URL" ]; then
+  # Auto-detect from the InferenceService
+  INFER_HOST=$(oc get inferenceservice -n fsi-demo -o jsonpath='{.items[0].status.url}' 2>/dev/null)
+  if [ -n "$INFER_HOST" ]; then
+    INFER_URL="${INFER_HOST}/v2/models/demo-model/infer"
+    echo -e "  ${GREEN}✅ Auto-detected: ${INFER_URL}${COLOR_RESET}"
+  else
+    echo -e "  ${RED}⚠️  Could not auto-detect. Please paste the URL manually.${COLOR_RESET}"
+    read -p "  Inference URL: " INFER_URL
+  fi
+fi
+
+echo ""
+echo "# 📡 Step 1: Check model health"
+
+wait
+
+pe "curl -sk ${INFER_URL%/infer} | python3 -m json.tool"
+
+echo ""
+echo "# 📡 Step 2: Send a prediction request"
+echo "#   Input: 5 features → [0.1, 0.5, 0.3, 0.7, 0.2]"
+echo "#   Output: 1 sigmoid value (0-1 probability)"
+
+wait
+
+pe "curl -sk $INFER_URL \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    \"inputs\": [{
+      \"name\": \"keras_tensor\",
+      \"shape\": [1, 5],
+      \"datatype\": \"FP32\",
+      \"data\": [0.1, 0.5, 0.3, 0.7, 0.2]
+    }]
+  }' | python3 -m json.tool"
+
+echo ""
+echo "# 📡 Step 3: Try different inputs"
+echo "#   Changing the feature values changes the prediction"
+
+wait
+
+pe "curl -sk $INFER_URL \\
+  -H 'Content-Type: application/json' \\
+  -d '{
+    \"inputs\": [{
+      \"name\": \"keras_tensor\",
+      \"shape\": [1, 5],
+      \"datatype\": \"FP32\",
+      \"data\": [0.9, 0.1, 0.8, 0.2, 0.95]
+    }]
+  }' | python3 -m json.tool"
+
+echo ""
+echo "# 💡 What just happened:"
+echo "#   • curl sent JSON over HTTPS to the Triton server"
+echo "#   • Triton loaded the SavedModel from S3 (MinIO)"
+echo "#   • GPU ran the forward pass through our neural network"
+echo "#   • Result: a probability between 0 and 1"
+echo "#"
+echo "# 🔑 In production this would be:"
+echo "#   • Fraud detection scores on transactions"
+echo "#   • Credit risk assessments"
+echo "#   • Real-time pricing models"
 
 wait
 
@@ -666,3 +764,18 @@ echo -e "#   Bare metal GPUs → trained model → live inference"
 echo -e "#   All on ${CYAN}OpenShift AI${COLOR_RESET} 🚀"
 echo "#"
 echo -e "# ${GREEN}══════════════════════════════════════════════${COLOR_RESET}"
+}
+
+######################################################################
+# Run all sections
+######################################################################
+
+section_1
+section_2
+section_3
+section_4
+section_5
+section_6
+section_7
+section_8
+section_9

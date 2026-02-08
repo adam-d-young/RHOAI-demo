@@ -46,7 +46,7 @@ objects:
           - "--http-port=8080"
           - "--allow-grpc=false"
           - "--allow-http=true"
-          - "--model-control-mode=explicit"
+          - "--model-control-mode=none"
         ports:
           - containerPort: 8080
             name: http1

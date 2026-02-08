@@ -1,3 +1,8 @@
+import os
+import warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # suppress TF info/warnings
+warnings.filterwarnings('ignore', message='.*Protobuf gencode version.*')
+
 import tensorflow as tf
 
 print("--- DEMO COMPLETE ---")

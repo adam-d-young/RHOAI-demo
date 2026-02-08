@@ -1,11 +1,11 @@
-import tensorflow as tf
 import os
+import warnings
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'  # suppress TF info/warnings
+warnings.filterwarnings('ignore', message='.*Protobuf gencode version.*')
 
-print("--- FINAL CONFIG CHECK ---")
-print(f"LD_LIBRARY_PATH: {os.environ.get('LD_LIBRARY_PATH', 'Not Set')}")
-# Expect: /opt/app-root/src/driver-override
+import tensorflow as tf
 
-print("\n--- GPU HARDWARE CHECK ---")
+print("--- GPU HARDWARE CHECK ---")
 gpus = tf.config.list_physical_devices('GPU')
 
 if len(gpus) > 0:
