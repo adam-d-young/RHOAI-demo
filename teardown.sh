@@ -76,8 +76,11 @@ else
   echo "  • Hardware profile (nvidia-gpu)"
   echo "  • Triton serving runtime template"
   echo "  • LlamaStack Helm releases"
+  echo "  • MinIO data (models bucket, uploaded artifacts)"
+  echo "  • MySQL data (model registry metadata)"
   echo ""
-  echo "Setup resources (MinIO, MySQL, GPU, RHOAI) will be preserved."
+  echo "Infrastructure (MinIO, MySQL, GPU, RHOAI) will be preserved but"
+  echo "storage data will be cleared so the demo starts fresh."
   echo ""
   read -p "Continue? (y/n): " CONFIRM
   if [ "$CONFIRM" != "y" ]; then
@@ -188,6 +191,36 @@ if oc get datasciencecluster default-dsc &>/dev/null; then
 else
   echo -e "  ${CYAN}DataScienceCluster not found${NC}"
 fi
+echo ""
+
+echo "═══════════════════════════════════════════"
+echo "Step 7: Reset MinIO and MySQL data"
+echo "═══════════════════════════════════════════"
+
+echo -e "  ${YELLOW}Clearing MinIO data (models bucket, uploaded artifacts)...${NC}"
+# Delete deployment + PVC, then re-apply manifest to recreate fresh
+if oc get deployment minio &>/dev/null; then
+  oc delete deployment minio --wait=false 2>/dev/null || true
+fi
+if oc get pvc minio-pvc &>/dev/null; then
+  oc delete pvc minio-pvc --wait=true 2>/dev/null || true
+fi
+echo -e "  ${YELLOW}Re-applying MinIO manifest (fresh PVC)...${NC}"
+oc apply -f "${DEMO_DIR}/manifests/minio.yaml"
+
+echo ""
+echo -e "  ${YELLOW}Clearing MySQL data (model registry metadata)...${NC}"
+if oc get deployment model-registry-db -n rhoai-model-registry &>/dev/null; then
+  oc delete deployment model-registry-db -n rhoai-model-registry --wait=false 2>/dev/null || true
+fi
+if oc get pvc model-registry-db-pvc -n rhoai-model-registry &>/dev/null; then
+  oc delete pvc model-registry-db-pvc -n rhoai-model-registry --wait=true 2>/dev/null || true
+fi
+echo -e "  ${YELLOW}Re-applying MySQL manifest (fresh PVC)...${NC}"
+oc apply -f "${DEMO_DIR}/manifests/model-registry-db.yaml"
+
+echo ""
+echo -e "  ${GREEN}Storage reset. MinIO and MySQL will start with empty data.${NC}"
 echo ""
 
 ######################################################################
@@ -352,8 +385,8 @@ echo -e "${GREEN}DEMO RESET COMPLETE${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════${NC}"
 echo ""
 echo "Cleaned up demo resources. Setup resources preserved:"
-echo "  ✅ MinIO (S3 storage) -- still running"
-echo "  ✅ MySQL (Model Registry DB) -- still running"
+echo "  ✅ MinIO (S3 storage) -- restarted with empty data"
+echo "  ✅ MySQL (Model Registry DB) -- restarted with empty data"
 echo "  ✅ GPU operators -- still running"
 echo "  ✅ RHOAI operator -- still installed"
 echo ""
