@@ -1094,18 +1094,16 @@ echo "#   (we're done chatting -- time to deploy our own model)"
 
 wait
 
-pe "oc scale deployment llama-stack llama-stack-playground -n granite-demo --replicas=0"
-
 GRANITE_ISVC=$(oc get inferenceservice -n granite-demo -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
-if [ -n "$GRANITE_ISVC" ]; then
-  pe "oc patch inferenceservice ${GRANITE_ISVC} -n granite-demo --type=json -p='[{\"op\":\"replace\",\"path\":\"/spec/predictor/minReplicas\",\"value\":0},{\"op\":\"replace\",\"path\":\"/spec/predictor/scaleTarget\",\"value\":0}]'"
-  echo ""
-  echo "# ⏳ Waiting for Granite predictor to scale down..."
-  while oc get pods -n granite-demo -l serving.kserve.io/inferenceservice=${GRANITE_ISVC} --no-headers 2>/dev/null | grep -q Running; do
-    sleep 5
-  done
-  echo -e "  ${GREEN}✅ Granite scaled down -- GPU freed${COLOR_RESET}"
-fi
+
+pe "oc scale deployment llama-stack llama-stack-playground ${GRANITE_ISVC}-predictor -n granite-demo --replicas=0"
+
+echo ""
+echo "# ⏳ Waiting for Granite predictor to scale down..."
+while oc get pods -n granite-demo -l serving.kserve.io/inferenceservice=${GRANITE_ISVC} --no-headers 2>/dev/null | grep -q Running; do
+  sleep 5
+done
+echo -e "  ${GREEN}✅ Granite scaled down -- GPU freed${COLOR_RESET}"
 
 wait
 
