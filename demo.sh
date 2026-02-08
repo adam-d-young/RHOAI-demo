@@ -573,6 +573,15 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 wait
 
 echo ""
+echo "# ⚙️  While we're here, let's deploy the pipeline server"
+echo "#   so it's ready when we get to Section 12."
+echo "#   This takes a couple minutes to start up."
+
+wait
+
+pe "oc apply -f manifests/dspa.yaml"
+
+echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo -e "# ${RED}   ACTION REQUIRED -- Create S3 Connection${COLOR_RESET}"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -920,26 +929,8 @@ echo "#   Deployment stays separate (Model Registry → Deploy)."
 wait
 
 echo ""
-echo "# 🔧 Step 1: Deploy the Pipeline Server (DSPA)"
-echo "#   • DataSciencePipelinesApplication = the KFP v2 engine"
-echo "#   • Deploys: API server, MariaDB, persistence agent"
-echo "#   • Stores pipeline artifacts in our MinIO bucket"
-
-wait
-
-echo ""
-echo "# 📋 Here's the DSPA manifest:"
-
-wait
-
-pe "bat --style=grid,numbers manifests/dspa.yaml"
-
-wait
-
-pe "oc apply -f manifests/dspa.yaml"
-
-echo ""
-echo "# ⏳ Waiting for pipeline server to come up..."
+echo "# 🔧 Pipeline server was deployed back in Section 8."
+echo "#   Let's verify it's ready:"
 
 wait
 
@@ -950,7 +941,7 @@ pe "oc get dspa -n fsi-demo"
 wait
 
 echo ""
-echo "# 🔧 Step 2: Compile the pipeline"
+echo "# 🔧 Step 1: Compile the pipeline"
 echo "#   • Pipeline is written in Python using KFP v2 SDK"
 echo "#   • Each @dsl.component becomes a container step"
 echo "#   • Compiling produces an IR YAML (Intermediate Representation)"
@@ -989,7 +980,7 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 wait
 
 echo ""
-echo "# 🔧 Step 3: Import and run the 4-step pipeline"
+echo "# 🔧 Step 2: Import and run the 4-step pipeline"
 
 wait
 
@@ -1027,7 +1018,7 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 wait
 
 echo ""
-echo "# 🎨 Step 4: Add Validate step with Elyra"
+echo "# 🎨 Step 3: Add Validate step with Elyra"
 echo "#   • Elyra = visual pipeline editor in JupyterLab"
 echo "#   • Drag-and-drop nodes instead of writing Python"
 echo "#   • Each node = a notebook or Python script"
@@ -1062,7 +1053,7 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 wait
 
 echo ""
-echo "# 📊 Step 5: Experiments & Tracking"
+echo "# 📊 Step 4: Experiments & Tracking"
 echo "#   • Pipeline runs can be used as experiments"
 echo "#   • The run view tracks those experiments"
 echo "#   • Compare results across runs, reproduce any previous run"
