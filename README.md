@@ -58,7 +58,7 @@ RHOAI-demo/
     ├── gpu-check.py                       # Verify TensorFlow sees the GPU
     ├── gpu-demo.py                        # GPU matrix multiply benchmark
     ├── train-and-upload.py                # Train model + upload to MinIO
-    ├── fsi-fraud-pipeline.py              # KFP v2 pipeline (compiles to IR YAML)
+    ├── fsi-fraud-pipeline.ipynb           # KFP v2 pipeline (compiles to IR YAML)
     ├── validate-model.ipynb               # Validate step (added via Elyra)
     └── inference-test.ipynb               # Send predictions to deployed model
 ```
