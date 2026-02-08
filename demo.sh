@@ -148,7 +148,7 @@ clear
 echo ""
 echo -e "${GREEN}  ___                 ___ _    _  __ _       _   ___ ${COLOR_RESET}"
 echo -e "${GREEN} / _ \ _ __  ___ _ _ / __| |_ (_)/ _| |_    /_\ |_ _|${COLOR_RESET}"
-echo -e "${GREEN}| (_) | '_ \/ -_) ' \\\\__ \ ' \| |  _|  _|  / _ \ | | ${COLOR_RESET}"
+echo -e "${GREEN}| (_) | '_ \/ -_) ' \\\\__ \ ' \| |_|  _|     / _ \ | | ${COLOR_RESET}"
 echo -e "${GREEN} \___/| .__/\___|_||_|___/_||_|_|_|  \__| /_/ \_\___|${COLOR_RESET}"
 echo -e "${GREEN}      |_|${COLOR_RESET}         ${CYAN}Get Started with OpenShift AI${COLOR_RESET}"
 echo ""
@@ -306,11 +306,50 @@ echo "# 🔄 Verify the operator installed:"
 
 wait
 
-pe "oc get csv -A | grep rhods"
+pe "oc get csv -n redhat-ods-operator | grep rhods"
+
+verify_step "RHOAI operator CSV is Succeeded" "oc get csv -n redhat-ods-operator 2>/dev/null | grep rhods | grep -q Succeeded"
+
+echo ""
+echo "# 🧩 The operator is installed, but it doesn't DO anything yet."
+echo "#   We need a DataScienceCluster (DSC) -- the CR that tells"
+echo "#   the operator which components to activate."
+echo "#"
+echo "# 📋 DSC components we need:"
+echo "#   • Dashboard, Workbenches, ModelRegistry → Managed (defaults)"
+echo "#   • KServe → Managed (model serving)"
+echo "#   • DataSciencePipelines → Managed (ML pipelines)"
+echo "#   • LlamaStack → Managed (NOT default -- must enable)"
+echo "#   • ModelMeshServing → Removed (deprecated, KServe replaces it)"
+
+wait
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Create DataScienceCluster${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo "#"
+echo "# 🌐 OpenShift Console → Installed Operators → Red Hat OpenShift AI"
+echo "#   → 'DataScienceCluster' tab → Click 'Create DataScienceCluster'"
+echo "#   → Switch to YAML view"
+echo "#"
+echo "# 📝 Find the llamastackoperator section and change it:"
+echo "#     llamastackoperator:"
+echo "#       managementState: Managed     ← change from Removed to Managed"
+echo "#"
+echo "# 💡 All other defaults are fine (Dashboard, KServe, Workbenches,"
+echo "#   ModelRegistry, Pipelines are already Managed by default)"
+echo "#"
+echo "#   → Click 'Create'"
+echo "#   → ⏳ Wait for status: Phase = Ready (may take 2-3 minutes)"
+echo "#"
+echo -e "# ${RED}   DO NOT press ENTER until the DSC shows Phase: Ready${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+
+wait
 
 echo ""
 echo "# 🔄 Checking RHOAI readiness..."
-verify_step "RHOAI operator CSV is Succeeded" "oc get csv -A 2>/dev/null | grep rhods | grep -q Succeeded"
 verify_step "DataScienceCluster exists" "oc get datasciencecluster default-dsc 2>/dev/null"
 verify_step "DataScienceCluster phase is Ready" "oc get datasciencecluster default-dsc -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Ready"
 verify_step "Dashboard is ready" "oc get datasciencecluster default-dsc -o jsonpath='{.status.conditions[?(@.type==\"DashboardReady\")].status}' 2>/dev/null | grep -q True"
@@ -326,15 +365,6 @@ echo "# 📋 What's managed vs removed:"
 wait
 
 pe "oc get datasciencecluster -o yaml | grep -A1 managementState"
-
-echo ""
-echo "# 🔧 Enable LlamaStack operator for GenAI capabilities"
-echo "#   • LlamaStack provides a unified API for LLM inference"
-echo "#   • We'll use it later for the Granite chat playground"
-
-wait
-
-pe "oc patch datasciencecluster default-dsc --type merge -p '{\"spec\":{\"components\":{\"llamastackoperator\":{\"managementState\":\"Managed\"}}}}'"
 
 echo ""
 echo "# ✅ RHOAI 3.0 is ready -- all components healthy, LlamaStack enabled"
