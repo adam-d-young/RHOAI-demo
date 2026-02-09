@@ -100,21 +100,21 @@ Full reset also removes MinIO, MySQL, GPU operators, and machinesets. Requires t
 
 ## Demo Sections
 
-| # | Section | Story Beat | Method |
-|---|---------|-----------|--------|
-| 1 | Check Current State (NFD, GPU, taints) | "The GPU foundation" | CLI |
-| 2 | Node Feature Discovery | | CLI |
-| 3 | NVIDIA GPU Operator (ClusterPolicy, nvidia-smi) | | CLI |
-| 4 | Install RHOAI | "The AI platform" | CLI + Browser |
-| 5 | Hardware Profile (GPU toleration) | | CLI or Browser |
-| 6 | Model Catalog — Deploy Granite LLM | "Foundation models, one click" | Browser |
-| 7 | Serving Runtimes & Backing Services | "How models get served" | CLI + Browser |
-| 8 | LlamaStack + Chat with Granite | "The wow moment" | Browser |
-| 9 | Workbench & Train Custom Model | "Build your own model" | CLI + Browser |
-| 10 | Model Registry | "Governance & lineage" | CLI + Browser |
-| 11 | Deploy from Registry & Test Inference | "From registry to production" | Browser |
-| 12 | Data Science Pipelines & Experiments | "Automate the lifecycle" | CLI + Browser |
-| 13 | Closing | | CLI |
+| # | Section | What It Solves | Method |
+|---|---------|---------------|--------|
+| 1 | Check Current State (NFD, GPU, taints) | GPU scheduling and isolation | CLI |
+| 2 | Node Feature Discovery | Automatic hardware detection | CLI |
+| 3 | NVIDIA GPU Operator (ClusterPolicy, nvidia-smi) | Driver and device plugin management | CLI |
+| 4 | Install RHOAI | ML platform on OpenShift (one operator) | CLI + Browser |
+| 5 | Hardware Profile (GPU toleration) | Controlled GPU access for ML workloads | CLI or Browser |
+| 6 | Model Catalog — Deploy Granite LLM | Trusted, validated foundation models | Browser |
+| 7 | Serving Runtimes & Backing Services | Different engines for different model types | CLI + Browser |
+| 8 | LlamaStack + Chat with Granite | Live LLM inference on-cluster | Browser |
+| 9 | Workbench & Train Custom Model | Self-service GPU dev environments | CLI + Browser |
+| 10 | Model Registry | Governance, lineage, and audit trail | CLI + Browser |
+| 11 | Deploy from Registry & Test Inference | Notebook to production in one click | Browser |
+| 12 | Data Science Pipelines & Experiments | Repeatable, automated training workflows | CLI + Browser |
+| 13 | Closing | Preview of hands-on labs | CLI |
 
 ## Key Design Decisions
 
