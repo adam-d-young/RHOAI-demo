@@ -285,9 +285,8 @@ echo "#   pipelines, model serving -- runs on top of this."
 
 wait
 
-pe "OCP_CONSOLE=\$(oc whoami --show-console) && echo \$OCP_CONSOLE"
-
-pe "$BROWSER_OPEN \$OCP_CONSOLE"
+OCP_CONSOLE=$(oc whoami --show-console)
+$BROWSER_OPEN $OCP_CONSOLE
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -357,7 +356,7 @@ verify_step "KServe is ready" "oc get datasciencecluster default-dsc -o jsonpath
 verify_step "Workbenches ready" "oc get datasciencecluster default-dsc -o jsonpath='{.status.conditions[?(@.type==\"WorkbenchesReady\")].status}' 2>/dev/null | grep -q True"
 verify_step "RHOAI Dashboard gateway exists" "oc get gateway data-science-gateway -n openshift-ingress 2>/dev/null"
 
-pe "RHOAI_URL=https://\$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}') && echo \$RHOAI_URL"
+RHOAI_URL=https://$(oc get gateway data-science-gateway -n openshift-ingress -o jsonpath='{.spec.listeners[0].hostname}')
 
 echo ""
 echo "# 📋 What's managed vs removed:"
@@ -438,7 +437,7 @@ verify_manifest "HardwareProfile config" "manifests/hardware-profile.yaml"
 
 wait
 
-pe "$BROWSER_OPEN \$RHOAI_URL"
+$BROWSER_OPEN $RHOAI_URL
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -483,7 +482,7 @@ echo "#   • Served via vLLM -- high-performance LLM inference engine"
 
 wait
 
-pe "$BROWSER_OPEN \$RHOAI_URL"
+$BROWSER_OPEN $RHOAI_URL
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -668,9 +667,9 @@ wait
 
 verify_step "MinIO UI route exists" "oc get route minio-ui 2>/dev/null"
 
-pe "MINIO_URL=\$(oc get route minio-ui -o jsonpath='https://{.spec.host}') && echo \$MINIO_URL"
+MINIO_URL=$(oc get route minio-ui -o jsonpath='https://{.spec.host}')
 
-pe "$BROWSER_OPEN \$MINIO_URL"
+$BROWSER_OPEN $MINIO_URL
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -786,9 +785,9 @@ echo "# 🌐 Opening the Playground..."
 
 wait
 
-pe "PLAYGROUND_URL=\$(oc get route llama-stack-playground -n granite-demo -o jsonpath='https://{.spec.host}') && echo \$PLAYGROUND_URL"
+PLAYGROUND_URL=$(oc get route llama-stack-playground -n granite-demo -o jsonpath='https://{.spec.host}')
 
-pe "$BROWSER_OPEN \$PLAYGROUND_URL"
+$BROWSER_OPEN $PLAYGROUND_URL
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -849,7 +848,7 @@ echo "#   4️⃣  Train model + upload to MinIO"
 
 wait
 
-pe "$BROWSER_OPEN \$RHOAI_URL"
+$BROWSER_OPEN $RHOAI_URL
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -936,7 +935,7 @@ echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━
 
 wait
 
-pe "$BROWSER_OPEN \$MINIO_URL"
+$BROWSER_OPEN $MINIO_URL
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -1012,7 +1011,7 @@ echo "# ✅ Registry is live! Now register our trained model"
 
 wait
 
-pe "$BROWSER_OPEN \$RHOAI_URL"
+$BROWSER_OPEN $RHOAI_URL
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -1111,22 +1110,39 @@ echo "# 🔧 First, we need to free a GPU for our fraud model."
 echo "#   Both A10G GPUs are currently in use:"
 echo "#     GPU 1: Granite LLM (granite-demo) -- done after Section 8"
 echo "#     GPU 2: Training workbench (fsi-demo) -- still needed"
+
+wait
+
+$BROWSER_OPEN $RHOAI_URL
+
+echo ""
+echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
+echo -e "# ${RED}   ACTION REQUIRED -- Stop the Granite deployment${COLOR_RESET}"
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 echo "#"
-echo "# 📉 Scaling down the Granite deployment + LlamaStack"
-echo "#   (we're done chatting -- time to deploy our own model)"
+echo "# 🌐 RHOAI Dashboard → Data Science Projects → granite-demo"
+echo "#   → Models tab → click the Granite model kebab menu (⋮)"
+echo "#   → 'Delete model server'"
+echo "#   → Confirm deletion"
+echo "#"
+echo "# 💡 We're done chatting -- time to deploy our own model."
+echo "#   Deleting the model server frees the GPU."
+echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
 wait
 
 GRANITE_ISVC=$(oc get inferenceservice -n granite-demo -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+if [ -n "$GRANITE_ISVC" ]; then
+  echo ""
+  echo "# ⏳ Waiting for Granite to scale down..."
+  while oc get pods -n granite-demo -l serving.kserve.io/inferenceservice=${GRANITE_ISVC} --no-headers 2>/dev/null | grep -q Running; do
+    sleep 5
+  done
+fi
+echo -e "  ${GREEN}✅ GPU freed${COLOR_RESET}"
 
-pe "oc scale deployment llama-stack llama-stack-playground ${GRANITE_ISVC}-predictor -n granite-demo --replicas=0"
-
-echo ""
-echo "# ⏳ Waiting for Granite predictor to scale down..."
-while oc get pods -n granite-demo -l serving.kserve.io/inferenceservice=${GRANITE_ISVC} --no-headers 2>/dev/null | grep -q Running; do
-  sleep 5
-done
-echo -e "  ${GREEN}✅ Granite scaled down -- GPU freed${COLOR_RESET}"
+# Also scale down LlamaStack (no longer needed without the LLM)
+oc scale deployment llama-stack llama-stack-playground -n granite-demo --replicas=0 2>/dev/null || true
 
 wait
 
@@ -1305,7 +1321,7 @@ echo "# 🔧 Step 2: Import and run the 4-step pipeline"
 
 wait
 
-pe "$BROWSER_OPEN \$RHOAI_URL"
+$BROWSER_OPEN $RHOAI_URL
 
 echo ""
 echo -e "# ${RED}🛑 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
@@ -1332,8 +1348,11 @@ echo "#   → Click a step to see its logs"
 echo "#   → 4 steps run in sequence:"
 echo "#     data-processing → feature-extract → train-model → upload-model"
 echo "#"
-echo "# 💡 In production you'd add validation, monitoring, and"
-echo "#   promotion steps -- the same pipeline pattern scales up."
+echo "# 💡 In production:"
+echo "#   • Submit pipelines programmatically (kfp.client.Client)"
+echo "#   • Trigger from CI/CD (Tekton, GitHub Actions) on git push"
+echo "#   • Schedule recurring runs (daily retraining on new data)"
+echo "#   • Add validation, monitoring, and promotion steps"
 echo -e "# ${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${COLOR_RESET}"
 
 wait
@@ -1350,10 +1369,11 @@ echo "#   • You'll explore Elyra in the hands-on labs"
 wait
 
 echo ""
-echo "# 📊 Step 3: Experiments & Tracking"
-echo "#   • Pipeline runs can be used as experiments"
-echo "#   • The run view tracks those experiments"
-echo "#   • Compare results across runs, reproduce any previous run"
+echo "# 📊 Step 3: Experiments & Metrics"
+echo "#   • Experiments group related runs for comparison"
+echo "#   • Our train step logs metrics: accuracy, AUC, dataset size"
+echo "#   • Click a completed run → metrics appear in the visualization tab"
+echo "#   • Compare AUC across runs to pick the best model"
 
 wait
 
@@ -1367,7 +1387,8 @@ echo "#   → Click 'fsi-fraud-experiments'"
 echo "#   → Shows all runs in this experiment"
 echo "#   → Click a completed run to see:"
 echo "#     • DAG visualization (pipeline graph)"
-echo "#     • Per-step logs (training accuracy, AUC score)"
+echo "#     • Per-step logs"
+echo "#     • Metrics tab: train_accuracy, test_accuracy, auc, num_samples"
 echo "#     • Input/output artifacts"
 echo "#     • Run parameters and duration"
 echo "#"
