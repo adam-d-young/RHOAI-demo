@@ -59,7 +59,7 @@ RHOAI-demo/
     ├── gpu-demo.py                        # GPU matrix multiply benchmark
     ├── train-and-upload.py                # Train model + upload to MinIO
     ├── fsi-fraud-pipeline.ipynb           # KFP v2 pipeline (compiles to IR YAML)
-    ├── validate-model.ipynb               # Validate step (added via Elyra)
+    ├── validate-model.ipynb               # Validate step (standalone notebook)
     └── inference-test.ipynb               # Send predictions to deployed model
 ```
 
@@ -124,7 +124,7 @@ Full reset also removes MinIO, MySQL, GPU operators, and machinesets. Requires t
 - **Triton for custom ML, vLLM for LLMs**: Two serving runtimes for two use cases.
 - **Model Registry workflow**: Train -> register in registry with metadata -> deploy from registry. Full lineage tracking.
 - **MinIO for S3**: Stands in for production S3/Ceph/ODF. Bucket creation is done live during the demo.
-- **Pipelines**: KFP v2 SDK compiles to IR YAML (Intermediate Representation). RHOAI 3.0 uses Argo Workflows backend. The pipeline is intentionally 4 steps; the validate step is added live using Elyra to show both code-first and visual pipeline building.
+- **Pipelines**: KFP v2 SDK compiles to IR YAML (Intermediate Representation). RHOAI 3.0 uses Argo Workflows backend. Pipeline is defined in a notebook (`fsi-fraud-pipeline.ipynb`) so the presenter can walk through each step with the audience.
 - **LlamaStack**: Deployed as bare Deployments (not via operator or Helm). The operator's security context conflicts with the `eformat` images. Server (`distribution-remote-vllm:0.2.15`) and playground (`streamlit_client:0.2.15`) are from the same author, ensuring API compatibility.
 - **GPU management**: Granite LLM is scaled to zero in Section 11 to free the GPU for the custom fraud model deployment. Two A10G GPUs are shared across the demo.
 - **Pre-warming**: Optional setup.sh step caches serving runtime images on GPU nodes for faster demo deployments.
